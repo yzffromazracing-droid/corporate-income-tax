@@ -15,10 +15,28 @@
       <input id="q" type="search" placeholder="キーワード（例：交際費 飲食　／　9-2-12　／　-除外語）" autocomplete="off" autofocus>
       <button id="clear" type="button" aria-label="クリア">×</button>
     </form>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="search">横断検索</button>
+      <button type="button" role="tab" data-tab="tsutatsu">通達</button>
+      <button type="button" role="tab" data-tab="articles">国税庁の記事</button>
+    </nav>
   </div>
 </header>
 
-<main class="wrap layout">
+<main id="view-tsutatsu" class="wrap browse" hidden>
+  <p class="lead">法人税基本通達を国税庁の目次（章・節・款）に沿って掲載しています。見出しを開くと通達の一覧、各通達を開くと本文が表示されます。</p>
+  <div id="tree-tsutatsu"></div>
+</main>
+
+<main id="view-articles" class="wrap browse" hidden>
+  <p class="lead">国税庁ホームページのタックスアンサー（法人税）と質疑応答事例（法人税）を、国税庁の目次の区分ごとに掲載しています。</p>
+  <h2 class="bhead"><span class="badge taxanswer">タックスアンサー</span> <span id="cnt-taxanswer" class="n"></span></h2>
+  <div id="tree-taxanswer"></div>
+  <h2 class="bhead"><span class="badge shitsugi">質疑応答事例</span> <span id="cnt-shitsugi" class="n"></span></h2>
+  <div id="tree-shitsugi"></div>
+</main>
+
+<main id="view-search" class="wrap layout">
   <aside class="filters">
     <section>
       <h2>出典種別</h2>

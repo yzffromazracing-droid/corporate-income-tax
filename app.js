@@ -4,7 +4,8 @@ const SOURCE_ORDER = ["tsutatsu", "shitsugi", "taxanswer"];
 const PAGE = 50;
 
 const $ = (id) => document.getElementById(id);
-const state = { q: "", sources: new Set(SOURCE_ORDER), category: "", scope: "all", shown: PAGE, open: new Set() };
+const TABS = ["search", "tsutatsu", "articles"];
+const state = { tab: "search", q: "", sources: new Set(SOURCE_ORDER), category: "", scope: "all", shown: PAGE, open: new Set() };
 let DB = null;
 let records = [];
 let results = [];
@@ -139,45 +140,102 @@ function render() {
   $("more").textContent = `さらに表示（残り ${(total - state.shown).toLocaleString()} 件）`;
 }
 
-function card(r, terms) {
+function card(r, terms, compact = false) {
   const li = document.createElement("li");
-  li.className = "item";
+  li.className = compact ? "item compact" : "item";
   const open = state.open.has(r.id);
   const label = DB.sources[r.source].label;
   const num = r.source === "taxanswer" && r.number ? "No." + r.number : r.number;
   li.innerHTML = `
     <header>
-      <span class="badge ${r.source}">${esc(label)}</span>
+      ${compact ? "" : `<span class="badge ${r.source}">${esc(label)}</span>`}
       ${num ? `<span class="num">${highlight(num, terms)}</span>` : ""}
       <span class="ttl">${highlight(r.title, terms)}</span>
-      <span class="crumb">${esc(r.path.join(" › "))}</span>
+      ${compact ? "" : `<span class="crumb">${esc(r.path.join(" › "))}</span>`}
     </header>
-    ${open ? `<div class="full">${highlight(r.body, terms)}</div>` : `<p class="snip">${highlight(snippet(r.body, terms), terms)}</p>`}
+    ${open ? `<div class="full">${highlight(r.body, terms)}</div>` : compact ? "" : `<p class="snip">${highlight(snippet(r.body, terms), terms)}</p>`}
     <div class="meta">
       <button type="button" class="toggle">${open ? "閉じる" : "全文を表示"}</button>
       <a href="${esc(sourceUrl(r))}" target="_blank" rel="noopener">原文（国税庁）↗</a>
       ${r.asof ? `<span class="asof">${esc(r.asof)}現在</span>` : ""}
     </div>`;
-  const toggle = () => { open ? state.open.delete(r.id) : state.open.add(r.id); li.replaceWith(card(r, terms)); };
+  const toggle = () => { open ? state.open.delete(r.id) : state.open.add(r.id); li.replaceWith(card(r, terms, compact)); };
   li.querySelector("header").onclick = toggle;
   li.querySelector(".toggle").onclick = toggle;
   return li;
 }
 
+// ---- 通達／国税庁の記事タブ：国税庁の目次構成に沿ったツリー表示
+function buildTree(recs) {
+  const root = { name: "", children: new Map(), items: [], count: 0 };
+  for (const r of recs) {
+    let node = root;
+    node.count++;
+    for (const seg of r.source === "tsutatsu" ? r.path : [r.category]) {
+      if (!node.children.has(seg)) node.children.set(seg, { name: seg, children: new Map(), items: [], count: 0 });
+      node = node.children.get(seg);
+      node.count++;
+    }
+    node.items.push(r);
+  }
+  return root;
+}
+
+// 子要素は初めて開いたときに生成する（通達は 1,000 件超のため）
+function treeNodes(node) {
+  const frag = document.createDocumentFragment();
+  for (const child of node.children.values()) {
+    const d = document.createElement("details");
+    d.className = "node";
+    d.innerHTML = `<summary>${esc(child.name)} <span class="n">${child.count}件</span></summary>`;
+    d.addEventListener("toggle", () => {
+      if (!d.open || d.dataset.built) return;
+      d.dataset.built = "1";
+      if (child.items.length) {
+        const ol = document.createElement("ol");
+        ol.className = "list";
+        for (const r of child.items) ol.appendChild(card(r, [], true));
+        d.appendChild(ol);
+      }
+      d.appendChild(treeNodes(child));
+    });
+    frag.appendChild(d);
+  }
+  return frag;
+}
+
+function buildBrowse() {
+  for (const s of SOURCE_ORDER) {
+    const root = buildTree(records.filter((r) => r.source === s));
+    $("tree-" + s).appendChild(treeNodes(root));
+    if ($("cnt-" + s)) $("cnt-" + s).textContent = `${root.count}件`;
+  }
+}
+
+function showTab() {
+  for (const t of TABS) {
+    $("view-" + t).hidden = t !== state.tab;
+    document.querySelector(`.tabs [data-tab=${t}]`).setAttribute("aria-selected", t === state.tab);
+  }
+}
+
 // ---- URL ハッシュとの同期（検索条件の共有用）
 function sync() {
   const p = new URLSearchParams();
+  if (state.tab !== "search") p.set("tab", state.tab);
   if (state.q) p.set("q", state.q);
   if (state.sources.size < 3) p.set("src", [...state.sources].join(","));
   if (state.category) p.set("cat", state.category.replace("\u0000", ":"));
   if (state.scope !== "all") p.set("scope", state.scope);
   const h = p.toString();
   history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
+  showTab();
   render();
 }
 
 function load() {
   const p = new URLSearchParams(location.hash.slice(1));
+  state.tab = TABS.includes(p.get("tab")) ? p.get("tab") : "search";
   state.q = p.get("q") || "";
   state.sources = new Set(p.get("src") ? p.get("src").split(",").filter((s) => SOURCE_ORDER.includes(s)) : SOURCE_ORDER);
   state.category = (p.get("cat") || "").replace(":", "\u0000");
@@ -247,15 +305,18 @@ async function init() {
   };
 
   let timer;
-  $("q").oninput = () => { clearTimeout(timer); timer = setTimeout(() => { state.q = $("q").value.trim(); state.shown = PAGE; sync(); }, 150); };
+  $("q").oninput = () => { clearTimeout(timer); timer = setTimeout(() => { state.q = $("q").value.trim(); state.tab = "search"; state.shown = PAGE; sync(); }, 150); };
   $("clear").onclick = () => { $("q").value = ""; state.q = ""; state.shown = PAGE; sync(); $("q").focus(); };
   for (const el of document.querySelectorAll("input[name=scope]")) el.onchange = () => { state.scope = el.value; state.shown = PAGE; sync(); };
   $("more").onclick = () => { state.shown += PAGE; render(); };
-  window.addEventListener("hashchange", () => { load(); render(); });
+  for (const b of document.querySelectorAll(".tabs [data-tab]")) b.onclick = () => { state.tab = b.dataset.tab; sync(); window.scrollTo(0, 0); };
+  window.addEventListener("hashchange", () => { load(); showTab(); render(); });
+  buildBrowse();
 
   const g = new Date(data.generated_at);
   $("generated").textContent = `データ取得日時：${g.toLocaleString("ja-JP")}`;
   load();
+  showTab();
   render();
 }
 
