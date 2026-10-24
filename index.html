@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>法人税区分辞書</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>法人税区分辞書</h1>
+    <p class="sub">国税庁ホームページ掲載の法人税基本通達・質疑応答事例・タックスアンサーを横断検索</p>
+    <form id="search" class="search" role="search" onsubmit="return false">
+      <input id="q" type="search" placeholder="キーワード（例：交際費 飲食　／　9-2-12　／　-除外語）" autocomplete="off" autofocus>
+      <button id="clear" type="button" aria-label="クリア">×</button>
+    </form>
+  </div>
+</header>
+
+<main class="wrap layout">
+  <aside class="filters">
+    <section>
+      <h2>出典種別</h2>
+      <div id="sources"></div>
+    </section>
+    <section>
+      <h2>分野</h2>
+      <select id="category"><option value="">すべての分野</option></select>
+      <ul id="catlist" class="catlist"></ul>
+    </section>
+    <section>
+      <h2>検索対象</h2>
+      <label><input type="radio" name="scope" value="all" checked> 見出し＋本文</label>
+      <label><input type="radio" name="scope" value="title"> 見出し・番号のみ</label>
+    </section>
+  </aside>
+
+  <section class="results">
+    <div id="status" class="status">データを読み込んでいます…</div>
+    <ol id="list" class="list"></ol>
+    <button id="more" class="more" hidden>さらに表示</button>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p>出典：国税庁ホームページ（<a href="https://www.nta.go.jp/" target="_blank" rel="noopener">https://www.nta.go.jp/</a>）の各ページを <code>scripts/fetch_nta.py</code> で取得・加工して作成。
+  本アプリは国税庁の公式サービスではありません。掲載内容は取得時点のものです。実際の適用にあたっては必ず各項目の原文リンク先で最新の内容を確認してください。</p>
+  <p id="generated"></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
