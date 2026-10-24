@@ -265,7 +265,8 @@
   /*
    * 検索・絞り込み・一覧の 1 セットを作る。
    * prefix : 要素IDの接頭辞（例：tsu → #tsu-q, #tsu-results …）
-   * opts.types    : 種別ボタンを出す種別コードの配列（省略時は出さない）
+   * opts.classes  : 「すべて」の右に出す整理区分（bunrui.js）のボタンの配列（省略時はボタンを出さない）
+   * opts.types    : 整理区分の右に出す種別ボタンの種別コードの配列（省略可）
    * opts.only     : この種別の記事だけを扱う
    * opts.showType : 各項目に種別バッジを出す
    * opts.allLabel : 分類の選択肢の「すべて」の表記
@@ -278,8 +279,8 @@
     var chips = $(prefix + "-type-filters");
     var select = $(prefix + "-category-filter");
 
-    if (opts.types && chips) {
-      [""].concat(opts.classes || [], opts.types).forEach(function (code) {
+    if ((opts.classes || opts.types) && chips) {
+      [""].concat(opts.classes || [], opts.types || []).forEach(function (code) {
         var btn = el("button", {
           class: "chip" + (code ? " chip-" + code : "") + (code === st.type ? " is-active" : ""),
           type: "button",
@@ -680,7 +681,7 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate", "yakuin", "kosai", "kifu"], types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
+    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate", "yakuin", "kosai", "kifu"], showType: true });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
     setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
