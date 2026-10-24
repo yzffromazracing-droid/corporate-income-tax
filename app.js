@@ -290,6 +290,8 @@
         });
         btn.addEventListener("click", function () {
           st.type = code;
+          // 横スクロールの列で、押したボタンが見える位置に来るようにする
+          if (btn.scrollIntoView) btn.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
           Array.prototype.forEach.call(chips.children, function (b) {
             var active = b.getAttribute("data-type") === st.type;
             b.classList.toggle("is-active", active);
