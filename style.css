@@ -80,5 +80,26 @@ a { color: var(--accent); }
 .meta button { font: inherit; font-size: 13px; background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; }
 mark { background: var(--mark); color: inherit; padding: 0 1px; border-radius: 2px; }
 .more { display: block; width: 100%; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--accent); cursor: pointer; }
+.tabs { display: flex; gap: 4px; margin-top: 12px; overflow-x: auto; }
+.tabs button {
+  font: inherit; font-size: 14px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg); color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+
+.browse { padding-top: 20px; padding-bottom: 20px; }
+.lead { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.bhead { font-size: 16px; margin: 24px 0 8px; display: flex; align-items: center; gap: 8px; }
+.bhead .badge { font-size: 14px; padding: 2px 8px; }
+.bhead .n, .node > summary .n { color: var(--muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.node { border-left: 2px solid var(--line); margin: 0 0 4px; padding-left: 10px; }
+.node > summary { cursor: pointer; padding: 6px 0; font-weight: 600; list-style-position: outside; }
+.node > summary:hover { color: var(--accent); }
+.node[open] > summary { color: var(--accent); }
+.node .node > summary { font-weight: 500; }
+.node > .list { margin: 4px 0 10px; }
+.item.compact { padding: 8px 12px; margin-bottom: 6px; }
+.item.compact .ttl { font-size: 15px; }
+
 .foot { color: var(--muted); font-size: 12px; padding-bottom: 32px; }
 .foot code { font-size: 11px; }
