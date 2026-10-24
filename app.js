@@ -280,7 +280,7 @@
     var chips = $(prefix + "-type-filters");
     var select = $(prefix + "-category-filter");
 
-    // 2 段目に置く区分（例：「損金」を選ぶと、その下に資本的支出と修繕費～減価償却のボタンを出す）
+    // 2 段目に置く区分（「益金」「損金」を選ぶと、その下に内訳のボタンを出す）
     var subOf = opts.subClasses || {};
     var parentOf = {};
     Object.keys(subOf).forEach(function (p) {
@@ -727,8 +727,11 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"],
-      subClasses: { sonkin: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"] },
+    setupDocTab("dict", { classes: ["ekin", "sonkin", "shueki", "haito", "hyokaeki", "jyuzo", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"],
+      subClasses: {
+        ekin: ["shueki", "haito", "hyokaeki", "jyuzo"],
+        sonkin: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"],
+      },
       showType: true,
     });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });

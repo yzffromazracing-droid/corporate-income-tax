@@ -122,7 +122,7 @@ main, .site-header > *, .site-footer {
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips[hidden] { display: none; }
 
-/* 辞書タブのボタンは 1 行に並べ、横にスクロールする（2 段目は「損金」の内訳） */
+/* 辞書タブのボタンは 1 行に並べ、横にスクロールする（2 段目は「益金」「損金」の内訳） */
 #dict-type-filters, #dict-sub-filters {
   flex: 1 1 100%;
   min-width: 0;
