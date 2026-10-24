@@ -1,323 +1,461 @@
-"use strict";
+(function () {
+  "use strict";
 
-const SOURCE_ORDER = ["tsutatsu", "shitsugi", "taxanswer"];
-const PAGE = 50;
-
-const $ = (id) => document.getElementById(id);
-const TABS = ["search", "tsutatsu", "articles"];
-const state = { tab: "search", q: "", sources: new Set(SOURCE_ORDER), category: "", scope: "all", shown: PAGE, open: new Set() };
-let DB = null;
-let records = [];
-let results = [];
-
-// 全角英数・全角ハイフン等を半角に寄せ、大文字小文字を同一視する
-function norm(s) {
-  return (s || "").normalize("NFKC").toLowerCase().replace(/[‐‑‒–—―−]/g, "-");
-}
-
-function esc(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-function parseQuery(q) {
-  const inc = [], exc = [];
-  for (const t of norm(q).split(/\s+/).filter(Boolean)) {
-    if (t.length > 1 && t.startsWith("-") && !/^-\d/.test(t)) exc.push(t.slice(1));
-    else inc.push(t);
-  }
-  return { inc, exc };
-}
-
-function catKey(r) { return r.source + "\u0000" + r.category; }
-
-function search() {
-  const { inc, exc } = parseQuery(state.q);
-  const out = [];
-  for (const r of records) {
-    const hay = state.scope === "title" ? r._head : r._all;
-    let ok = true, score = 0;
-    for (const t of exc) if (r._all.includes(t)) { ok = false; break; }
-    if (!ok) continue;
-    for (const t of inc) {
-      if (!hay.includes(t)) { ok = false; break; }
-      if (r._num === t) score += 1000;
-      else if (r._num.startsWith(t)) score += 200;
-      if (r._title.includes(t)) score += 50;
-      if (r._cat.includes(t)) score += 10;
-      let i = -1, c = 0;
-      while ((i = r._body.indexOf(t, i + 1)) !== -1 && c < 20) c++;
-      score += c;
-    }
-    if (ok) out.push({ r, score });
-  }
-  if (inc.length) out.sort((a, b) => b.score - a.score || a.r._order - b.r._order);
-  return out.map((x) => x.r);
-}
-
-function highlight(text, terms) {
-  if (!terms.length) return esc(text);
-  // norm() は長さを変えうるので、元の文字ごとに正規化して位置を対応付ける
-  const map = [];
-  let normed = "";
-  for (let i = 0; i < text.length; i++) {
-    const ch = norm(text[i]);
-    for (let k = 0; k < ch.length; k++) map.push(i);
-    normed += ch;
-  }
-  const marks = new Array(text.length + 1).fill(0);
-  for (const t of terms) {
-    let i = -1;
-    while ((i = normed.indexOf(t, i + 1)) !== -1) {
-      marks[map[i]] += 1;
-      marks[map[i + t.length - 1] + 1] -= 1;
-    }
-  }
-  let html = "", depth = 0, open = false;
-  for (let i = 0; i < text.length; i++) {
-    depth += marks[i];
-    if (depth > 0 && !open) { html += "<mark>"; open = true; }
-    if (depth <= 0 && open) { html += "</mark>"; open = false; }
-    html += esc(text[i]);
-  }
-  if (open) html += "</mark>";
-  return html;
-}
-
-function snippet(body, terms) {
-  const flat = body.replace(/\n+/g, " ");
-  if (!terms.length) return flat.slice(0, 140) + (flat.length > 140 ? "…" : "");
-  const nf = norm(flat);
-  let pos = -1;
-  for (const t of terms) { const p = nf.indexOf(t); if (p !== -1 && (pos === -1 || p < pos)) pos = p; }
-  if (pos === -1) return flat.slice(0, 140) + (flat.length > 140 ? "…" : "");
-  const start = Math.max(0, pos - 50);
-  return (start > 0 ? "…" : "") + flat.slice(start, start + 160) + (start + 160 < flat.length ? "…" : "");
-}
-
-function sourceUrl(r) {
-  // 通達はページ内の該当番号へテキストフラグメントで移動（対応ブラウザのみ）
-  if (r.source === "tsutatsu" && r.number) return r.url + "#:~:text=" + encodeURIComponent(r.number);
-  return r.url;
-}
-
-function render() {
-  const base = search();
-  const { inc } = parseQuery(state.q);
-
-  // 件数集計（出典は分野以外の条件、分野は出典条件込みで集計）
-  const srcCount = {}, catCount = new Map();
-  for (const r of base) {
-    if (!state.category || catKey(r) === state.category) srcCount[r.source] = (srcCount[r.source] || 0) + 1;
-    if (state.sources.has(r.source)) catCount.set(catKey(r), (catCount.get(catKey(r)) || 0) + 1);
-  }
-  results = base.filter((r) => state.sources.has(r.source) && (!state.category || catKey(r) === state.category));
-
-  for (const s of SOURCE_ORDER) $("n-" + s).textContent = srcCount[s] || 0;
-
-  const cl = $("catlist");
-  cl.innerHTML = "";
-  for (const [k, c] of DB.cats) {
-    if (!state.sources.has(k.split("\u0000")[0])) continue;
-    const n = catCount.get(k) || 0;
-    if (!n && k !== state.category) continue;
-    const li = document.createElement("li");
-    li.className = k === state.category ? "on" : "";
-    li.innerHTML = `<span class="badge ${c.source}">${esc(DB.sources[c.source].short)}</span><span>${esc(c.category)}</span><span class="n">${n}</span>`;
-    li.onclick = () => { state.category = state.category === k ? "" : k; state.shown = PAGE; sync(); };
-    cl.appendChild(li);
-  }
-  $("category").value = state.category;
-
-  const total = results.length;
-  $("status").textContent = state.q || state.category || state.sources.size < 3
-    ? `${total.toLocaleString()} 件` + (state.q ? `（「${state.q}」）` : "")
-    : `全 ${total.toLocaleString()} 件を収録`;
-
-  const list = $("list");
-  list.innerHTML = "";
-  for (const r of results.slice(0, state.shown)) list.appendChild(card(r, inc));
-  $("more").hidden = total <= state.shown;
-  $("more").textContent = `さらに表示（残り ${(total - state.shown).toLocaleString()} 件）`;
-}
-
-function card(r, terms, compact = false) {
-  const li = document.createElement("li");
-  li.className = compact ? "item compact" : "item";
-  const open = state.open.has(r.id);
-  const label = DB.sources[r.source].label;
-  const num = r.source === "taxanswer" && r.number ? "No." + r.number : r.number;
-  li.innerHTML = `
-    <header>
-      ${compact ? "" : `<span class="badge ${r.source}">${esc(label)}</span>`}
-      ${num ? `<span class="num">${highlight(num, terms)}</span>` : ""}
-      <span class="ttl">${highlight(r.title, terms)}</span>
-      ${compact ? "" : `<span class="crumb">${esc(r.path.join(" › "))}</span>`}
-    </header>
-    ${open ? `<div class="full">${highlight(r.body, terms)}</div>` : compact ? "" : `<p class="snip">${highlight(snippet(r.body, terms), terms)}</p>`}
-    <div class="meta">
-      <button type="button" class="toggle">${open ? "閉じる" : "全文を表示"}</button>
-      <a href="${esc(sourceUrl(r))}" target="_blank" rel="noopener">原文（国税庁）↗</a>
-      ${r.asof ? `<span class="asof">${esc(r.asof)}現在</span>` : ""}
-    </div>`;
-  const toggle = () => { open ? state.open.delete(r.id) : state.open.add(r.id); li.replaceWith(card(r, terms, compact)); };
-  li.querySelector("header").onclick = toggle;
-  li.querySelector(".toggle").onclick = toggle;
-  return li;
-}
-
-// ---- 通達／国税庁の記事タブ：国税庁の目次構成に沿ったツリー表示
-function buildTree(recs) {
-  const root = { name: "", children: new Map(), items: [], count: 0 };
-  for (const r of recs) {
-    let node = root;
-    node.count++;
-    for (const seg of r.source === "tsutatsu" ? r.path : [r.category]) {
-      if (!node.children.has(seg)) node.children.set(seg, { name: seg, children: new Map(), items: [], count: 0 });
-      node = node.children.get(seg);
-      node.count++;
-    }
-    node.items.push(r);
-  }
-  return root;
-}
-
-// 子要素は初めて開いたときに生成する（通達は 1,000 件超のため）
-function treeNodes(node) {
-  const frag = document.createDocumentFragment();
-  for (const child of node.children.values()) {
-    const d = document.createElement("details");
-    d.className = "node";
-    d.innerHTML = `<summary>${esc(child.name)} <span class="n">${child.count}件</span></summary>`;
-    d.addEventListener("toggle", () => {
-      if (!d.open || d.dataset.built) return;
-      d.dataset.built = "1";
-      if (child.items.length) {
-        const ol = document.createElement("ol");
-        ol.className = "list";
-        for (const r of child.items) ol.appendChild(card(r, [], true));
-        d.appendChild(ol);
-      }
-      d.appendChild(treeNodes(child));
-    });
-    frag.appendChild(d);
-  }
-  return frag;
-}
-
-function buildBrowse() {
-  for (const s of SOURCE_ORDER) {
-    const root = buildTree(records.filter((r) => r.source === s));
-    $("tree-" + s).appendChild(treeNodes(root));
-    if ($("cnt-" + s)) $("cnt-" + s).textContent = `${root.count}件`;
-  }
-}
-
-function showTab() {
-  for (const t of TABS) {
-    $("view-" + t).hidden = t !== state.tab;
-    document.querySelector(`.tabs [data-tab=${t}]`).setAttribute("aria-selected", t === state.tab);
-  }
-}
-
-// ---- URL ハッシュとの同期（検索条件の共有用）
-function sync() {
-  const p = new URLSearchParams();
-  if (state.tab !== "search") p.set("tab", state.tab);
-  if (state.q) p.set("q", state.q);
-  if (state.sources.size < 3) p.set("src", [...state.sources].join(","));
-  if (state.category) p.set("cat", state.category.replace("\u0000", ":"));
-  if (state.scope !== "all") p.set("scope", state.scope);
-  const h = p.toString();
-  history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
-  showTab();
-  render();
-}
-
-function load() {
-  const p = new URLSearchParams(location.hash.slice(1));
-  state.tab = TABS.includes(p.get("tab")) ? p.get("tab") : "search";
-  state.q = p.get("q") || "";
-  state.sources = new Set(p.get("src") ? p.get("src").split(",").filter((s) => SOURCE_ORDER.includes(s)) : SOURCE_ORDER);
-  state.category = (p.get("cat") || "").replace(":", "\u0000");
-  state.scope = p.get("scope") === "title" ? "title" : "all";
-  $("q").value = state.q;
-  document.querySelector(`input[name=scope][value=${state.scope}]`).checked = true;
-  for (const s of SOURCE_ORDER) $("src-" + s).checked = state.sources.has(s);
-}
-
-async function init() {
-  let data;
-  try {
-    const res = await fetch("data/hojin.json");
-    if (!res.ok) throw new Error(res.status);
-    data = await res.json();
-  } catch (e) {
-    $("status").textContent = "data/hojin.json を読み込めませんでした。scripts/fetch_nta.py でデータを生成し、HTTP サーバー経由で開いてください。";
-    return;
-  }
-  const short = { tsutatsu: "通達", shitsugi: "質疑", taxanswer: "TA" };
-  DB = { sources: {}, cats: new Map() };
-  for (const s of SOURCE_ORDER) DB.sources[s] = { ...data.sources[s], short: short[s] };
-
-  records = data.records.map((r, i) => {
-    const head = [r.number, r.title, r.category, ...(r.path || [])].join(" ");
-    const o = {
-      ...r,
-      path: r.path || [],
-      _order: SOURCE_ORDER.indexOf(r.source) * 1e6 + i,
-      _num: norm(r.number),
-      _title: norm(r.title),
-      _cat: norm((r.path || []).join(" ")),
-      _body: norm(r.body),
-      _head: norm(head),
-    };
-    o._all = o._head + "\n" + o._body;
-    return o;
-  });
-  records.sort((a, b) => a._order - b._order);
-  for (const r of records) if (!DB.cats.has(catKey(r))) DB.cats.set(catKey(r), { source: r.source, category: r.category });
-
-  // 出典チェックボックス
-  const box = $("sources");
-  for (const s of SOURCE_ORDER) {
-    const lab = document.createElement("label");
-    lab.innerHTML = `<input type="checkbox" id="src-${s}" checked> <span class="badge ${s}">${esc(DB.sources[s].label)}</span><span class="n" id="n-${s}">0</span>`;
-    box.appendChild(lab);
-    lab.querySelector("input").onchange = (e) => {
-      e.target.checked ? state.sources.add(s) : state.sources.delete(s);
-      if (state.category && !state.sources.has(state.category.split("\u0000")[0])) state.category = "";
-      state.shown = PAGE; sync();
-    };
-  }
-  // 分野セレクト（出典ごとにグループ化）
-  const sel = $("category");
-  for (const s of SOURCE_ORDER) {
-    const g = document.createElement("optgroup");
-    g.label = DB.sources[s].label;
-    for (const [k, c] of DB.cats) if (c.source === s) g.appendChild(new Option(c.category, k));
-    sel.appendChild(g);
-  }
-  sel.onchange = () => {
-    state.category = sel.value;
-    if (state.category) state.sources.add(state.category.split("\u0000")[0]);
-    for (const s of SOURCE_ORDER) $("src-" + s).checked = state.sources.has(s);
-    state.shown = PAGE; sync();
+  var PAGE_SIZE = 50;
+  // 出典の内部名 → 画面上の種別コード・表示名
+  var TYPES = {
+    tsu: { source: "tsutatsu", label: "法人税基本通達", short: "通達" },
+    ta: { source: "taxanswer", label: "タックスアンサー", short: "タックスアンサー" },
+    qa: { source: "shitsugi", label: "質疑応答事例", short: "質疑応答事例" },
   };
+  var TYPE_OF = { tsutatsu: "tsu", taxanswer: "ta", shitsugi: "qa" };
+  var TABS = ["dict", "tsu", "nta"];
+  var SUBS = ["ta", "qa"];
 
-  let timer;
-  $("q").oninput = () => { clearTimeout(timer); timer = setTimeout(() => { state.q = $("q").value.trim(); state.tab = "search"; state.shown = PAGE; sync(); }, 150); };
-  $("clear").onclick = () => { $("q").value = ""; state.q = ""; state.shown = PAGE; sync(); $("q").focus(); };
-  for (const el of document.querySelectorAll("input[name=scope]")) el.onchange = () => { state.scope = el.value; state.shown = PAGE; sync(); };
-  $("more").onclick = () => { state.shown += PAGE; render(); };
-  for (const b of document.querySelectorAll(".tabs [data-tab]")) b.onclick = () => { state.tab = b.dataset.tab; sync(); window.scrollTo(0, 0); };
-  window.addEventListener("hashchange", () => { load(); showTab(); render(); });
-  buildBrowse();
+  var ARTICLES = [];
 
-  const g = new Date(data.generated_at);
-  $("generated").textContent = `データ取得日時：${g.toLocaleString("ja-JP")}`;
-  load();
-  showTab();
-  render();
-}
+  function $(id) {
+    return document.getElementById(id);
+  }
 
-init();
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (key) {
+      if (key === "text") node.textContent = attrs[key];
+      else if (key === "html") node.innerHTML = attrs[key];
+      else node.setAttribute(key, attrs[key]);
+    });
+    (children || []).forEach(function (child) {
+      if (child) node.appendChild(child);
+    });
+    return node;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  /* ---------- 検索 ---------- */
+
+  // 全角英数・全角ハイフン等を半角に寄せ、大文字小文字を同一視する
+  function norm(s) {
+    return (s || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[‐‑‒–—―−]/g, "-");
+  }
+
+  function parseQuery(q) {
+    var inc = [];
+    var exc = [];
+    norm(q)
+      .split(/\s+/)
+      .filter(Boolean)
+      .forEach(function (t) {
+        if (t.length > 1 && t.charAt(0) === "-" && !/^-\d/.test(t)) exc.push(t.slice(1));
+        else inc.push(t);
+      });
+    return { inc: inc, exc: exc };
+  }
+
+  function blocksText(blocks) {
+    return blocks
+      .map(function (b) {
+        if (b[0] === "t") {
+          return b[1]
+            .map(function (row) {
+              return row
+                .map(function (c) {
+                  return c.x;
+                })
+                .join(" ");
+            })
+            .join("\n");
+        }
+        return b[b.length - 1];
+      })
+      .join("\n");
+  }
+
+  function searchArticles(list, q, filter) {
+    var query = parseQuery(q);
+    var out = [];
+    list.forEach(function (a) {
+      if (filter.type && a.type !== filter.type) return;
+      if (filter.category && a.category !== filter.category) return;
+      var score = 0;
+      for (var i = 0; i < query.exc.length; i++) if (a.norm.indexOf(query.exc[i]) !== -1) return;
+      for (var j = 0; j < query.inc.length; j++) {
+        var t = query.inc[j];
+        if (a.norm.indexOf(t) === -1) return;
+        if (a.noNorm === t) score += 1000;
+        else if (a.noNorm.indexOf(t) === 0) score += 200;
+        if (a.titleNorm.indexOf(t) !== -1) score += 50;
+        if (a.pathNorm.indexOf(t) !== -1) score += 10;
+        var p = -1;
+        var c = 0;
+        while ((p = a.bodyNorm.indexOf(t, p + 1)) !== -1 && c < 20) c++;
+        score += c;
+      }
+      out.push({ a: a, score: score });
+    });
+    if (query.inc.length) {
+      out.sort(function (x, y) {
+        return y.score - x.score || x.a.order - y.a.order;
+      });
+    }
+    return out.map(function (x) {
+      return x.a;
+    });
+  }
+
+  // 検索語を <mark> で強調した HTML を返す（正規化前後の文字位置を対応付けて強調する）
+  function highlight(text, terms) {
+    if (!terms.length) return esc(text);
+    var map = [];
+    var normed = "";
+    for (var i = 0; i < text.length; i++) {
+      var ch = norm(text.charAt(i));
+      for (var k = 0; k < ch.length; k++) map.push(i);
+      normed += ch;
+    }
+    var marks = new Array(text.length + 1).fill(0);
+    terms.forEach(function (t) {
+      var p = -1;
+      while ((p = normed.indexOf(t, p + 1)) !== -1) {
+        marks[map[p]] += 1;
+        marks[map[p + t.length - 1] + 1] -= 1;
+      }
+    });
+    var html = "";
+    var depth = 0;
+    var open = false;
+    for (var j = 0; j < text.length; j++) {
+      depth += marks[j];
+      if (depth > 0 && !open) {
+        html += "<mark>";
+        open = true;
+      }
+      if (depth <= 0 && open) {
+        html += "</mark>";
+        open = false;
+      }
+      html += esc(text.charAt(j));
+    }
+    return html + (open ? "</mark>" : "");
+  }
+
+  // 検索語が本文にだけ一致したとき、一致箇所の前後を見出しの下に出す
+  function snippet(a, terms) {
+    var flat = a.bodyText.replace(/\s+/g, " ");
+    var nf = norm(flat);
+    var pos = -1;
+    terms.forEach(function (t) {
+      var p = nf.indexOf(t);
+      if (p !== -1 && (pos === -1 || p < pos)) pos = p;
+    });
+    if (pos === -1) return "";
+    var start = Math.max(0, pos - 40);
+    return (start > 0 ? "…" : "") + flat.slice(start, start + 120) + (start + 120 < flat.length ? "…" : "");
+  }
+
+  /* ---------- 全文の表示 ---------- */
+
+  function renderArticleBlocks(blocks, terms) {
+    var box = el("div", { class: "article-body" });
+    var list = null;
+    blocks.forEach(function (b) {
+      if (b[0] !== "li") list = null;
+      if (b[0] === "h") {
+        box.appendChild(el(b[1] <= 2 ? "h4" : "h5", { class: "article-h", html: highlight(b[2], terms) }));
+      } else if (b[0] === "p") {
+        box.appendChild(el("p", { class: "article-p", html: highlight(b[1], terms) }));
+      } else if (b[0] === "li") {
+        if (!list) {
+          list = el("ul", { class: "article-ul" });
+          box.appendChild(list);
+        }
+        list.appendChild(el("li", { class: "article-p", html: highlight(b[1], terms) }));
+      } else if (b[0] === "t") {
+        var table = el("table", { class: "article-table" });
+        b[1].forEach(function (row) {
+          var tr = el("tr");
+          row.forEach(function (c) {
+            var attrs = { html: highlight(c.x, terms) };
+            if (c.r > 1) attrs.rowspan = String(c.r);
+            if (c.c > 1) attrs.colspan = String(c.c);
+            tr.appendChild(el(c.h ? "th" : "td", attrs));
+          });
+          table.appendChild(tr);
+        });
+        box.appendChild(el("div", { class: "article-table-wrap" }, [table]));
+      }
+    });
+    return box;
+  }
+
+  function sourceUrl(a) {
+    // 通達はページ内の該当番号へテキストフラグメントで移動（対応ブラウザのみ）
+    if (a.type === "tsu" && a.number) return a.url + "#:~:text=" + encodeURIComponent(a.number);
+    return a.url;
+  }
+
+  function noLabel(a) {
+    if (a.type === "ta") return "No." + a.number;
+    return a.number;
+  }
+
+  function renderOne(a, terms, opts) {
+    var titleParts = [];
+    var no = noLabel(a);
+    var path = a.type === "tsu" ? a.path.slice(1).join(" › ") : opts.showType ? a.category : "";
+    if (no || path) {
+      titleParts.push(
+        el("span", { class: "article-no" }, [
+          no ? el("span", { html: highlight(no, terms) }) : null,
+          path ? el("span", { class: "article-path", text: (no ? "　" : "") + path }) : null,
+        ])
+      );
+    }
+    titleParts.push(el("span", { class: "item-name", html: highlight(a.title, terms) }));
+    var snip = terms.length && a.titleNorm.indexOf(terms[0]) === -1 ? snippet(a, terms) : "";
+    if (snip) titleParts.push(el("span", { class: "article-snippet", html: highlight(snip, terms) }));
+
+    var head = [];
+    if (opts.showType) head.push(el("span", { class: "badge article-type badge-" + a.type, text: TYPES[a.type].short }));
+    head.push(el("span", { class: "article-title" }, titleParts));
+    var summary = el("summary", { class: "item-head article-head" }, head);
+
+    var body = el("div", { class: "item-body" });
+    var details = el("details", {}, [summary, body]);
+    // 全文は開いたときに描画する（通達は 1,000 件を超えるため）
+    details.addEventListener("toggle", function () {
+      if (!details.open || body.childNodes.length) return;
+      if (a.asof) body.appendChild(el("p", { class: "article-asof", text: a.asof + "現在の法令・通達等に基づく内容" }));
+      body.appendChild(renderArticleBlocks(a.blocks, terms));
+      body.appendChild(
+        el("p", {}, [
+          el("a", { class: "article-link", href: sourceUrl(a), target: "_blank", rel: "noopener", text: "国税庁の原文を開く ↗" }),
+        ])
+      );
+    });
+    return el("li", { class: "item article item-" + a.type }, [details]);
+  }
+
+  /*
+   * 検索・絞り込み・一覧の 1 セットを作る。
+   * prefix : 要素IDの接頭辞（例：tsu → #tsu-q, #tsu-results …）
+   * opts.types    : 種別ボタンを出す種別コードの配列（省略時は出さない）
+   * opts.only     : この種別の記事だけを扱う
+   * opts.showType : 各項目に種別バッジを出す
+   * opts.allLabel : 分類の選択肢の「すべて」の表記
+   */
+  function setupDocTab(prefix, opts) {
+    var st = { q: "", type: "", category: "", limit: PAGE_SIZE };
+    var list = ARTICLES.filter(function (a) {
+      return !opts.only || a.type === opts.only;
+    });
+    var chips = $(prefix + "-type-filters");
+    var select = $(prefix + "-category-filter");
+
+    if (opts.types && chips) {
+      [""].concat(opts.types).forEach(function (code) {
+        var btn = el("button", {
+          class: "chip" + (code ? " chip-" + code : "") + (code === st.type ? " is-active" : ""),
+          type: "button",
+          "data-type": code,
+          "aria-pressed": String(code === st.type),
+          text: code ? TYPES[code].label : "すべて",
+        });
+        btn.addEventListener("click", function () {
+          st.type = code;
+          Array.prototype.forEach.call(chips.children, function (b) {
+            var active = b.getAttribute("data-type") === st.type;
+            b.classList.toggle("is-active", active);
+            b.setAttribute("aria-pressed", String(active));
+          });
+          fillCategories();
+          renderList(true);
+        });
+        chips.appendChild(btn);
+      });
+    }
+
+    select.addEventListener("change", function (e) {
+      st.category = e.target.value;
+      renderList(true);
+    });
+    $(prefix + "-q").addEventListener("input", function (e) {
+      st.q = e.target.value;
+      renderList(true);
+    });
+
+    // 種別に応じて分類の選択肢を作り直す（国税庁の目次順）
+    function fillCategories() {
+      var seen = {};
+      select.textContent = "";
+      select.appendChild(el("option", { value: "", text: opts.allLabel || "すべての分類" }));
+      var found = false;
+      list.forEach(function (a) {
+        if (st.type && a.type !== st.type) return;
+        var key = a.type + "|" + a.category;
+        if (seen[key]) return;
+        seen[key] = true;
+        if (key === st.category) found = true;
+        var label = opts.showType && !st.type ? TYPES[a.type].short + "：" + a.category : a.category;
+        select.appendChild(el("option", { value: key, text: label }));
+      });
+      if (!found) st.category = "";
+      select.value = st.category;
+    }
+
+    function renderList(resetLimit) {
+      if (resetLimit) st.limit = PAGE_SIZE;
+      // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）
+      var sep = st.category.indexOf("|");
+      var results = searchArticles(list, st.q, {
+        type: sep >= 0 ? st.category.slice(0, sep) : st.type,
+        category: sep >= 0 ? st.category.slice(sep + 1) : "",
+      });
+      var terms = parseQuery(st.q).inc;
+      var ul = $(prefix + "-results");
+      ul.textContent = "";
+      results.slice(0, st.limit).forEach(function (a) {
+        ul.appendChild(renderOne(a, terms, opts));
+      });
+      if (!results.length) {
+        ul.appendChild(el("li", { class: "empty" }, [el("p", { text: "該当する項目が見つかりませんでした。" })]));
+      }
+      if (results.length > st.limit) {
+        var more = el("button", {
+          class: "btn btn-ghost more",
+          type: "button",
+          text: "さらに表示（残り " + (results.length - st.limit) + " 件）",
+        });
+        more.addEventListener("click", function () {
+          st.limit += PAGE_SIZE;
+          renderList(false);
+        });
+        ul.appendChild(el("li", { class: "empty" }, [more]));
+      }
+      if (results.length === 1) ul.querySelector("details").open = true;
+      $(prefix + "-count").textContent =
+        st.q.trim() || st.category || st.type ? results.length + " 件" : "全 " + results.length + " 件";
+    }
+
+    fillCategories();
+    renderList(true);
+  }
+
+  /* ---------- タブ ---------- */
+
+  var view = { tab: "dict", sub: "ta" };
+
+  function showView() {
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
+      var active = b.getAttribute("data-tab") === view.tab;
+      b.classList.toggle("is-active", active);
+      b.setAttribute("aria-selected", String(active));
+    });
+    TABS.forEach(function (t) {
+      $("tab-" + t).hidden = t !== view.tab;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".subtab"), function (b) {
+      var active = b.getAttribute("data-sub") === view.sub;
+      b.classList.toggle("is-active", active);
+      b.setAttribute("aria-selected", String(active));
+    });
+    SUBS.forEach(function (s) {
+      $("sub-" + s).hidden = s !== view.sub;
+    });
+  }
+
+  // タブは URL（#tab=tsu、#tab=nta&sub=qa）でも開ける
+  function readHash() {
+    var p = new URLSearchParams(location.hash.slice(1));
+    view.tab = TABS.indexOf(p.get("tab")) !== -1 ? p.get("tab") : "dict";
+    view.sub = SUBS.indexOf(p.get("sub")) !== -1 ? p.get("sub") : "ta";
+  }
+
+  function writeHash() {
+    var p = new URLSearchParams();
+    if (view.tab !== "dict") p.set("tab", view.tab);
+    if (view.tab === "nta" && view.sub !== "ta") p.set("sub", view.sub);
+    var h = p.toString();
+    history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
+  }
+
+  function setupTabs() {
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
+      b.addEventListener("click", function () {
+        view.tab = b.getAttribute("data-tab");
+        writeHash();
+        showView();
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".subtab"), function (b) {
+      b.addEventListener("click", function () {
+        view.sub = b.getAttribute("data-sub");
+        writeHash();
+        showView();
+      });
+    });
+    window.addEventListener("hashchange", function () {
+      readHash();
+      showView();
+    });
+    readHash();
+    showView();
+  }
+
+  /* ---------- 起動 ---------- */
+
+  function init(data) {
+    ARTICLES = data.records.map(function (r, i) {
+      var bodyText = blocksText(r.blocks);
+      var path = r.path || [];
+      return {
+        type: TYPE_OF[r.source],
+        order: i,
+        number: r.number,
+        title: r.title,
+        category: r.category,
+        path: path,
+        blocks: r.blocks,
+        asof: r.asof || "",
+        url: r.url,
+        bodyText: bodyText,
+        noNorm: norm(r.number),
+        titleNorm: norm(r.title),
+        pathNorm: norm(path.join(" ")),
+        bodyNorm: norm(bodyText),
+        norm: norm([r.number, r.title, path.join(" ")].join(" ")) + "\n" + norm(bodyText),
+      };
+    });
+
+    var fetched = data.generated_at.slice(0, 10);
+    Array.prototype.forEach.call(document.querySelectorAll(".fetched"), function (n) {
+      n.textContent = fetched;
+    });
+    $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
+
+    setupDocTab("dict", { types: ["tsu", "ta", "qa"], showType: true });
+    setupDocTab("tsu", { only: "tsu", allLabel: "すべての章" });
+    setupDocTab("ta", { only: "ta" });
+    setupDocTab("qa", { only: "qa" });
+  }
+
+  setupTabs();
+  fetch("data/hojin.json")
+    .then(function (res) {
+      if (!res.ok) throw new Error(res.status);
+      return res.json();
+    })
+    .then(init)
+    .catch(function () {
+      $("dict-count").textContent =
+        "data/hojin.json を読み込めませんでした。scripts/fetch_nta.py でデータを生成し、HTTP サーバー経由で開いてください。";
+    });
+})();
