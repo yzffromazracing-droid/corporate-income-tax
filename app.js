@@ -267,6 +267,7 @@
    * prefix : 要素IDの接頭辞（例：tsu → #tsu-q, #tsu-results …）
    * opts.classes  : 「すべて」の右に出す整理区分（bunrui.js）のボタンの配列（省略時はボタンを出さない）
    * opts.types    : 整理区分の右に出す種別ボタンの種別コードの配列（省略可）
+   * opts.subClasses : { 親の区分: [内訳の区分, …] }。内訳は親を選んだときに 2 段目に表示する
    * opts.only     : この種別の記事だけを扱う
    * opts.showType : 各項目に種別バッジを出す
    * opts.allLabel : 分類の選択肢の「すべて」の表記
@@ -279,30 +280,73 @@
     var chips = $(prefix + "-type-filters");
     var select = $(prefix + "-category-filter");
 
-    if ((opts.classes || opts.types) && chips) {
-      [""].concat(opts.classes || [], opts.types || []).forEach(function (code) {
-        var btn = el("button", {
-          class: "chip" + (code ? " chip-" + code : "") + (code === st.type ? " is-active" : ""),
-          type: "button",
-          "data-type": code,
-          "aria-pressed": String(code === st.type),
-          text: !code ? "すべて" : BUNRUI[code] ? BUNRUI[code].label : TYPES[code].label,
-        });
-        btn.addEventListener("click", function () {
-          st.type = code;
-          // 横スクロールの列で、押したボタンが見える位置に来るようにする
-          if (btn.scrollIntoView) btn.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-          Array.prototype.forEach.call(chips.children, function (b) {
-            var active = b.getAttribute("data-type") === st.type;
-            b.classList.toggle("is-active", active);
-            b.setAttribute("aria-pressed", String(active));
-          });
-          fillCategories();
-          renderList(true);
-        });
-        chips.appendChild(btn);
+    // 2 段目に置く区分（例：「損金」を選ぶと、その下に資本的支出と修繕費～減価償却のボタンを出す）
+    var subOf = opts.subClasses || {};
+    var parentOf = {};
+    Object.keys(subOf).forEach(function (p) {
+      subOf[p].forEach(function (c) {
+        parentOf[c] = p;
+      });
+    });
+    var subChips = $(prefix + "-sub-filters");
+
+    function chipButton(code, label) {
+      var btn = el("button", {
+        class: "chip" + (code ? " chip-" + code : ""),
+        type: "button",
+        "data-type": code,
+        "aria-pressed": "false",
+        text: label,
+      });
+      btn.addEventListener("click", function () {
+        choose(code);
+      });
+      return btn;
+    }
+
+    function setActive(box, code) {
+      Array.prototype.forEach.call(box.children, function (b) {
+        var active = b.getAttribute("data-type") === code;
+        b.classList.toggle("is-active", active);
+        b.setAttribute("aria-pressed", String(active));
       });
     }
+
+    // 1 段目は親の区分を選択状態にし、親に内訳があれば 2 段目を表示する
+    function refreshChips() {
+      var top = parentOf[st.type] || st.type;
+      setActive(chips, top);
+      if (!subChips) return;
+      var parent = subOf[top] ? top : "";
+      subChips.hidden = !parent;
+      subChips.textContent = "";
+      if (!parent) return;
+      [parent].concat(subOf[parent]).forEach(function (code) {
+        subChips.appendChild(chipButton(code, code === parent ? BUNRUI[parent].label + "（全体）" : BUNRUI[code].label));
+      });
+      setActive(subChips, st.type);
+    }
+
+    function choose(code) {
+      st.type = code;
+      refreshChips();
+      // 横スクロールの列で、押したボタンが見える位置に来るようにする
+      [chips, subChips].forEach(function (box) {
+        var b = box && box.querySelector('.is-active[data-type="' + code + '"]');
+        if (b && b.scrollIntoView) b.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      });
+      fillCategories();
+      renderList(true);
+    }
+
+    if ((opts.classes || opts.types) && chips) {
+      [""].concat(opts.classes || [], opts.types || []).forEach(function (code) {
+        if (parentOf[code]) return;
+        chips.appendChild(chipButton(code, !code ? "すべて" : BUNRUI[code] ? BUNRUI[code].label : TYPES[code].label));
+      });
+      refreshChips();
+    }
+
 
     select.addEventListener("change", function (e) {
       st.category = e.target.value;
@@ -683,7 +727,10 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"], showType: true });
+    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"],
+      subClasses: { sonkin: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka"] },
+      showType: true,
+    });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
     setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
