@@ -3,6 +3,8 @@
 
 対象:
   - 法人税基本通達      https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm
+  - 租税特別措置法関係通達（法人税編）
+                        https://www.nta.go.jp/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm
   - 質疑応答事例（法人税） https://www.nta.go.jp/law/shitsugi/hojin/01.htm
   - タックスアンサー（法人税） https://www.nta.go.jp/taxes/shiraberu/taxanswer/code/index.htm#code07
 
@@ -29,6 +31,7 @@ from urllib.parse import urljoin, urlparse
 
 BASE = "https://www.nta.go.jp"
 TSUTATSU_INDEX = BASE + "/law/tsutatsu/kihon/hojin/01.htm"
+SOCHIHO_INDEX = BASE + "/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm"
 SHITSUGI_INDEX = BASE + "/law/shitsugi/hojin/01.htm"
 TAXANSWER_INDEX = BASE + "/taxes/shiraberu/taxanswer/code/index.htm"
 
@@ -338,7 +341,8 @@ class TsutatsuIndexParser(HTMLParser):
             self.li_stack[-1] += data
 
 
-TSUTATSU_NO = re.compile(r"^(\d+(?:の\d+)?(?:[－\-‐−]\d+(?:の\d+)*)+)[\s\u3000]+(?=\S)")
+# 通達番号（例: 9－2－12、12の5－3－3、42の3の2-1、61の4(1)－15の2、42の6～47（共）－1）
+TSUTATSU_NO = re.compile(r"^(\d+(?:の\d+)*(?:～\d+(?:の\d+)*)?(?:[(（](?:\d+|共)[)）])?(?:[－\-‐−]\d+(?:の\d+)*)+)[\s\u3000]+(?=\S)")
 
 
 def crawl_tsutatsu(f):
@@ -355,11 +359,36 @@ def crawl_tsutatsu(f):
             continue
         seen.add(url)
         pages.append({**e, "url": url})
-    print(f"[通達] 目次 {len(pages)} ページ", file=sys.stderr)
+    return parse_tsutatsu_pages(f, pages, "tsutatsu", "/law/tsutatsu/kihon/hojin/", "通達")
 
+
+def crawl_sochiho(f):
+    """租税特別措置法関係通達（法人税編）。目次は 章（indent1）› 条関係（indent2）› 款（indent3）の段落で並ぶ。"""
+    doc = f.get(SOCHIHO_INDEX)
+    base = "/law/tsutatsu/kobetsu/hojin/sochiho/750214/"
+    chapter, article, pages, seen = "", "", [], set()
+    for b in blocks_of(body_area(doc)):
+        if b["cls"] == "indent1":
+            chapter, article = b["text"], ""
+        elif b["cls"] == "indent2":
+            article = b["text"]
+        for l in b["links"]:
+            url = urljoin(SOCHIHO_INDEX, l["href"]).split("#")[0]
+            p = urlparse(url).path
+            if not p.startswith(base) or "/zenbun/" in p or url == SOCHIHO_INDEX or url in seen:
+                continue
+            seen.add(url)
+            parents = [article] if b["cls"] == "indent3" and article else []
+            pages.append({"chapter": chapter, "parents": parents, "text": l["text"], "url": url})
+    return parse_tsutatsu_pages(f, pages, "sochiho", base, "措置法")
+
+
+def parse_tsutatsu_pages(f, pages, source, base, label):
+    """通達の各ページを通達番号ごとの項目に分ける。pages は {chapter, parents, text, url} の目次順の列。"""
+    print(f"[{label}] 目次 {len(pages)} ページ", file=sys.stderr)
     records = []
     for n, pg in enumerate(pages, 1):
-        print(f"[通達] {n}/{len(pages)} {pg['url']}", file=sys.stderr)
+        print(f"[{label}] {n}/{len(pages)} {pg['url']}", file=sys.stderr)
         doc = f.get(pg["url"])
         if doc is None:
             continue
@@ -379,10 +408,12 @@ def crawl_tsutatsu(f):
                 # 括弧なしで書かれた見出しもある（例: 12の5－3－3）。直後が通達ならその見出しとして使う
                 caption = "" if re.match(r"^第[0-9０-９一二三四五六七八九十]", b["text"]) else b["text"]
                 continue
-            m = TSUTATSU_NO.match(b["text"]) if b["tag"] == "p" else None
+            # 番号の途中に改行が入っているページがある（例: 「63<br>(4)－18」）
+            text = re.sub(r"^(\d+(?:の\d+)*)\s+(?=[(（])", r"\1", b["text"]) if b["tag"] == "p" else ""
+            m = TSUTATSU_NO.match(text)
             if m:
                 number = m.group(1)
-                body = b["text"][m.end():]
+                body = text[m.end():]
                 if caption == heading:
                     heading = ""
                 items.append({"number": number, "caption": caption, "heading": heading, "blocks": [["p", body]]})
@@ -395,8 +426,8 @@ def crawl_tsutatsu(f):
                       if b["text"] and b["tag"] != "h1" and b["cls"] not in ("skip", "page-top-link")]
             if blocks:
                 records.append({
-                    "id": "tsutatsu:" + urlparse(pg["url"]).path.split("/hojin/")[1],
-                    "source": "tsutatsu", "number": "", "title": page_title,
+                    "id": f"{source}:" + urlparse(pg["url"]).path[len(base):],
+                    "source": source, "number": "", "title": page_title,
                     "category": pg["chapter"], "path": path, "blocks": blocks, "url": pg["url"],
                 })
             continue
@@ -409,8 +440,8 @@ def crawl_tsutatsu(f):
             else:
                 title = "（見出しなし）"
             records.append({
-                "id": "tsutatsu:" + num_ascii,
-                "source": "tsutatsu",
+                "id": f"{source}:" + num_ascii,
+                "source": source,
                 "number": it["number"],
                 "title": title,
                 "category": pg["chapter"],
@@ -552,13 +583,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--delay", type=float, default=1.0, help="ネットワークアクセスの間隔（秒）")
     ap.add_argument("--refresh", action="store_true", help="キャッシュを無視して再取得する")
-    ap.add_argument("--only", choices=["tsutatsu", "shitsugi", "taxanswer"], action="append")
+    ap.add_argument("--only", choices=["tsutatsu", "sochiho", "shitsugi", "taxanswer"], action="append")
     ap.add_argument("--out", type=Path, default=OUT_PATH)
     args = ap.parse_args()
 
     f = Fetcher(args.delay, args.refresh)
-    targets = args.only or ["tsutatsu", "shitsugi", "taxanswer"]
-    crawlers = {"tsutatsu": crawl_tsutatsu, "shitsugi": crawl_shitsugi, "taxanswer": crawl_taxanswer}
+    targets = args.only or ["tsutatsu", "sochiho", "shitsugi", "taxanswer"]
+    crawlers = {"tsutatsu": crawl_tsutatsu, "sochiho": crawl_sochiho, "shitsugi": crawl_shitsugi,
+                "taxanswer": crawl_taxanswer}
     records = []
     for t in targets:
         records += crawlers[t](f)
@@ -574,6 +606,7 @@ def main():
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "sources": {
             "tsutatsu": {"label": "法人税基本通達", "index": TSUTATSU_INDEX},
+            "sochiho": {"label": "租税特別措置法関係通達（法人税編）", "index": SOCHIHO_INDEX},
             "shitsugi": {"label": "質疑応答事例", "index": SHITSUGI_INDEX},
             "taxanswer": {"label": "タックスアンサー", "index": TAXANSWER_INDEX + "#code07"},
         },

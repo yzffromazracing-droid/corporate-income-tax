@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>法人税区分辞書</title>
-  <meta name="description" content="法人税基本通達・タックスアンサー・質疑応答事例（国税庁ホームページ）をキーワードで調べられる辞書">
+  <meta name="description" content="法人税基本通達・措置法通達・タックスアンサー・質疑応答事例（国税庁ホームページ）をキーワードで調べられる辞書">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -29,20 +29,39 @@
       </div>
       <p id="dict-count" class="count"></p>
       <ul id="dict-results" class="results"></ul>
-      <p class="source">出典：国税庁ホームページ（<a href="https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm" target="_blank" rel="noopener">法人税基本通達</a>・<a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/code/index.htm#code07" target="_blank" rel="noopener">タックスアンサー（法人税）</a>・<a href="https://www.nta.go.jp/law/shitsugi/hojin/01.htm" target="_blank" rel="noopener">質疑応答事例（法人税）</a>）　取得日：<span class="fetched"></span><br>スペース区切りで複数語を指定でき（すべてを含むものを表示）、「-語」で除外できます。検索語は本文にも一致します。</p>
+      <p class="source">出典：国税庁ホームページ（<a href="https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm" target="_blank" rel="noopener">法人税基本通達</a>・<a href="https://www.nta.go.jp/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm" target="_blank" rel="noopener">租税特別措置法関係通達（法人税編）</a>・<a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/code/index.htm#code07" target="_blank" rel="noopener">タックスアンサー（法人税）</a>・<a href="https://www.nta.go.jp/law/shitsugi/hojin/01.htm" target="_blank" rel="noopener">質疑応答事例（法人税）</a>）　取得日：<span class="fetched"></span><br>スペース区切りで複数語を指定でき（すべてを含むものを表示）、「-語」で除外できます。検索語は本文にも一致します。</p>
     </section>
 
     <!-- 通達 -->
     <section id="tab-tsu" class="panel" role="tabpanel" hidden>
-      <div class="search-box">
-        <input id="tsu-q" type="search" placeholder="例：9-2-12、定期同額給与、少額の減価償却資産" autocomplete="off" aria-label="通達を検索">
+      <nav class="subtabs" role="tablist" aria-label="通達の種類">
+        <button class="subtab is-active" role="tab" data-sub="kihon" aria-selected="true">法人税基本通達</button>
+        <button class="subtab" role="tab" data-sub="so" aria-selected="false">措置法通達</button>
+      </nav>
+
+      <div id="sub-kihon" class="subpanel" role="tabpanel">
+        <div class="search-box">
+          <input id="kihon-q" type="search" placeholder="例：9-2-12、定期同額給与、少額の減価償却資産" autocomplete="off" aria-label="法人税基本通達を検索">
+        </div>
+        <div class="filters">
+          <select id="kihon-category-filter" class="select" aria-label="章で絞り込み"></select>
+        </div>
+        <p id="kihon-count" class="count"></p>
+        <ul id="kihon-results" class="results"></ul>
+        <p class="source">出典：<a href="https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm" target="_blank" rel="noopener">法人税基本通達</a>（国税庁ホームページ）　取得日：<span class="fetched"></span><br>国税庁の目次（章・節・款）の順に掲載しています。通達を開くと全文（注書き・改正経過を含む）を表示します。最新の内容は必ずリンク先の原文でご確認ください。</p>
       </div>
-      <div class="filters">
-        <select id="tsu-category-filter" class="select" aria-label="章で絞り込み"></select>
+
+      <div id="sub-so" class="subpanel" role="tabpanel" hidden>
+        <div class="search-box">
+          <input id="so-q" type="search" placeholder="例：61の4(1)-15の2、交際費、中小企業者、賃上げ" autocomplete="off" aria-label="措置法通達を検索">
+        </div>
+        <div class="filters">
+          <select id="so-category-filter" class="select" aria-label="章で絞り込み"></select>
+        </div>
+        <p id="so-count" class="count"></p>
+        <ul id="so-results" class="results"></ul>
+        <p class="source">出典：<a href="https://www.nta.go.jp/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm" target="_blank" rel="noopener">租税特別措置法関係通達（法人税編）</a>（国税庁ホームページ）　取得日：<span class="fetched"></span><br>国税庁の目次（章・条・款）の順に掲載しています。通達を開くと全文（注書き・改正経過を含む）を表示します。最新の内容は必ずリンク先の原文でご確認ください。</p>
       </div>
-      <p id="tsu-count" class="count"></p>
-      <ul id="tsu-results" class="results"></ul>
-      <p class="source">出典：<a href="https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm" target="_blank" rel="noopener">法人税基本通達</a>（国税庁ホームページ）　取得日：<span class="fetched"></span><br>国税庁の目次（章・節・款）の順に掲載しています。通達を開くと全文（注書き・改正経過を含む）を表示します。最新の内容は必ずリンク先の原文でご確認ください。</p>
     </section>
 
     <!-- 国税庁の記事 -->

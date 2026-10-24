@@ -248,16 +248,19 @@ h5.article-h { font-size: 0.92rem; }
 /* ---- 法人税区分辞書の追加分 ---- */
 .lead { margin: 0 0 12px; color: var(--muted); font-size: 0.9rem; }
 
-/* 出典ごとの色（通達・タックスアンサー・質疑応答事例） */
+/* 出典ごとの色（基本通達・措置法通達・タックスアンサー・質疑応答事例） */
 .badge-tsu { color: var(--k10); background: var(--k10-bg); }
 .badge-ta { color: var(--hi); background: var(--hi-bg); }
 .badge-qa { color: var(--k8); background: var(--k8-bg); }
+.badge-so { color: var(--men); background: var(--men-bg); }
 .item-tsu { border-left-color: var(--k10); }
 .item-ta { border-left-color: var(--hi); }
 .item-qa { border-left-color: var(--k8); }
+.item-so { border-left-color: var(--men); }
 .chip-tsu.is-active { background: var(--k10); border-color: var(--k10); }
 .chip-ta.is-active { background: var(--hi); border-color: var(--hi); }
 .chip-qa.is-active { background: var(--k8); border-color: var(--k8); }
+.chip-so.is-active { background: var(--men); border-color: var(--men); }
 
 /* 国税庁の記事のサブタブ */
 .subtabs { display: flex; gap: 6px; margin-bottom: 12px; }

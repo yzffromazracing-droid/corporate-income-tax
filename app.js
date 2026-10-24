@@ -4,13 +4,15 @@
   var PAGE_SIZE = 50;
   // 出典の内部名 → 画面上の種別コード・表示名
   var TYPES = {
-    tsu: { source: "tsutatsu", label: "法人税基本通達", short: "通達" },
+    tsu: { source: "tsutatsu", label: "法人税基本通達", short: "基本通達" },
+    so: { source: "sochiho", label: "措置法通達", short: "措置法通達" },
     ta: { source: "taxanswer", label: "タックスアンサー", short: "タックスアンサー" },
     qa: { source: "shitsugi", label: "質疑応答事例", short: "質疑応答事例" },
   };
-  var TYPE_OF = { tsutatsu: "tsu", taxanswer: "ta", shitsugi: "qa" };
+  var TYPE_OF = { tsutatsu: "tsu", sochiho: "so", taxanswer: "ta", shitsugi: "qa" };
   var TABS = ["dict", "tsu", "nta"];
-  var SUBS = ["ta", "qa"];
+  // サブタブのあるタブ（先頭が既定）
+  var SUBS = { tsu: ["kihon", "so"], nta: ["ta", "qa"] };
 
   var ARTICLES = [];
 
@@ -198,7 +200,7 @@
 
   function sourceUrl(a) {
     // 通達はページ内の該当番号へテキストフラグメントで移動（対応ブラウザのみ）
-    if (a.type === "tsu" && a.number) return a.url + "#:~:text=" + encodeURIComponent(a.number);
+    if ((a.type === "tsu" || a.type === "so") && a.number) return a.url + "#:~:text=" + encodeURIComponent(a.number).replace(/-/g, "%2D");
     return a.url;
   }
 
@@ -210,7 +212,8 @@
   function renderOne(a, terms, opts) {
     var titleParts = [];
     var no = noLabel(a);
-    var path = a.type === "tsu" ? a.path.slice(1).join(" › ") : opts.showType ? a.category : "";
+    var isTsutatsu = a.type === "tsu" || a.type === "so";
+    var path = isTsutatsu ? a.path.slice(1).join(" › ") : opts.showType ? a.category : "";
     if (no || path) {
       titleParts.push(
         el("span", { class: "article-no" }, [
@@ -230,7 +233,7 @@
 
     var body = el("div", { class: "item-body" });
     var details = el("details", {}, [summary, body]);
-    // 全文は開いたときに描画する（通達は 1,000 件を超えるため）
+    // 全文は開いたときに描画する（通達は合わせて 2,000 件を超えるため）
     details.addEventListener("toggle", function () {
       if (!details.open || body.childNodes.length) return;
       if (a.asof) body.appendChild(el("p", { class: "article-asof", text: a.asof + "現在の法令・通達等に基づく内容" }));
@@ -351,7 +354,7 @@
 
   /* ---------- タブ ---------- */
 
-  var view = { tab: "dict", sub: "ta" };
+  var view = { tab: "dict", sub: { tsu: "kihon", nta: "ta" } };
 
   function showView() {
     Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
@@ -362,27 +365,30 @@
     TABS.forEach(function (t) {
       $("tab-" + t).hidden = t !== view.tab;
     });
-    Array.prototype.forEach.call(document.querySelectorAll(".subtab"), function (b) {
-      var active = b.getAttribute("data-sub") === view.sub;
-      b.classList.toggle("is-active", active);
-      b.setAttribute("aria-selected", String(active));
-    });
-    SUBS.forEach(function (s) {
-      $("sub-" + s).hidden = s !== view.sub;
+    Object.keys(SUBS).forEach(function (t) {
+      SUBS[t].forEach(function (s) {
+        var active = s === view.sub[t];
+        var b = document.querySelector('.subtab[data-sub="' + s + '"]');
+        b.classList.toggle("is-active", active);
+        b.setAttribute("aria-selected", String(active));
+        $("sub-" + s).hidden = !active;
+      });
     });
   }
 
-  // タブは URL（#tab=tsu、#tab=nta&sub=qa）でも開ける
+  // タブは URL（#tab=tsu&sub=so、#tab=nta&sub=qa）でも開ける
   function readHash() {
     var p = new URLSearchParams(location.hash.slice(1));
     view.tab = TABS.indexOf(p.get("tab")) !== -1 ? p.get("tab") : "dict";
-    view.sub = SUBS.indexOf(p.get("sub")) !== -1 ? p.get("sub") : "ta";
+    Object.keys(SUBS).forEach(function (t) {
+      view.sub[t] = view.tab === t && SUBS[t].indexOf(p.get("sub")) !== -1 ? p.get("sub") : SUBS[t][0];
+    });
   }
 
   function writeHash() {
     var p = new URLSearchParams();
     if (view.tab !== "dict") p.set("tab", view.tab);
-    if (view.tab === "nta" && view.sub !== "ta") p.set("sub", view.sub);
+    if (SUBS[view.tab] && view.sub[view.tab] !== SUBS[view.tab][0]) p.set("sub", view.sub[view.tab]);
     var h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
   }
@@ -397,7 +403,10 @@
     });
     Array.prototype.forEach.call(document.querySelectorAll(".subtab"), function (b) {
       b.addEventListener("click", function () {
-        view.sub = b.getAttribute("data-sub");
+        var s = b.getAttribute("data-sub");
+        Object.keys(SUBS).forEach(function (t) {
+          if (SUBS[t].indexOf(s) !== -1) view.sub[t] = s;
+        });
         writeHash();
         showView();
       });
@@ -441,8 +450,9 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { types: ["tsu", "ta", "qa"], showType: true });
-    setupDocTab("tsu", { only: "tsu", allLabel: "すべての章" });
+    setupDocTab("dict", { types: ["tsu", "so", "ta", "qa"], showType: true });
+    setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
+    setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
     setupDocTab("qa", { only: "qa" });
   }
