@@ -122,6 +122,23 @@ main, .site-header > *, .site-footer {
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips[hidden] { display: none; }
 
+/* 辞書タブのボタンは 1 行に並べ、横にスクロールする */
+#dict-type-filters {
+  flex: 1 1 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+#dict-type-filters::-webkit-scrollbar { display: none; }
+#dict-type-filters .chip { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+#dict-type-filters .chip:last-child { margin-right: 24px; }
+
 .chip {
   padding: 4px 12px;
   border: 1px solid var(--border);
