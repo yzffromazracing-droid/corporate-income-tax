@@ -22,7 +22,7 @@
     qa: { tab: "nta", sub: "qa" },
     bk: { tab: "nta", sub: "bk" },
   };
-  var REF_PREVIEW = 8; // 益金・損金のテーマで出典ごとに最初に表示する件数
+  var REF_PREVIEW = 8; // 益金・損金などのテーマで出典ごとに最初に表示する件数
   var INSTANCES = {};
 
   var ARTICLES = [];
@@ -99,8 +99,8 @@
     list.forEach(function (a) {
       if (filter.type && a.type !== filter.type) return;
       if (filter.category && a.category !== filter.category) return;
-      if (filter.cls && a.cls !== filter.cls) return;
-      if (filter.topic && a.topic !== filter.topic) return;
+      if (filter.cls && !a.tags[filter.cls]) return;
+      if (filter.topic && a.tags[filter.cls].topic !== filter.topic) return;
       var score = 0;
       for (var i = 0; i < query.exc.length; i++) if (a.norm.indexOf(query.exc[i]) !== -1) return;
       for (var j = 0; j < query.inc.length; j++) {
@@ -312,7 +312,7 @@
       renderList(true);
     });
 
-    // 辞書（益金・損金）から移動してきた項目だけを開いて表示する
+    // 辞書（益金・損金など）から移動してきた項目だけを開いて表示する
     function clearFocus() {
       st.focus = "";
       if (view.id) {
@@ -334,7 +334,7 @@
       },
     };
 
-    // 種別に応じて分類の選択肢を作り直す（国税庁の目次順）。益金・損金ではテーマの一覧にする
+    // 種別に応じて分類の選択肢を作り直す（国税庁の目次順）。益金・損金などではテーマの一覧にする
     function fillCategories() {
       var seen = {};
       select.textContent = "";
@@ -366,7 +366,7 @@
 
     function renderList(resetLimit) {
       if (resetLimit) st.limit = PAGE_SIZE;
-      // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）、益金・損金のテーマは「topic|テーマ」
+      // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）、益金・損金などのテーマは「topic|テーマ」
       var cls = BUNRUI[st.type] ? st.type : "";
       if (st.focus) return renderFocus();
       var sep = st.category.indexOf("|");
@@ -411,7 +411,7 @@
         return a.id === st.focus;
       });
       var fromDict = history.state && history.state.fromDict;
-      var back = el("button", { class: "btn btn-ghost", type: "button", text: fromDict ? "← 益金・損金に戻る" : "← 辞書へ" });
+      var back = el("button", { class: "btn btn-ghost", type: "button", text: fromDict ? "← 辞書の一覧に戻る" : "← 辞書へ" });
       back.addEventListener("click", function () {
         if (fromDict) history.back();
         else location.hash = "";
@@ -429,7 +429,7 @@
       $(prefix + "-count").textContent = hit.length ? "選択した項目を表示しています" : "該当する項目が見つかりませんでした。";
     }
 
-    // 益金・損金：テーマごとにタイトル・説明文と、関連する通達・記事のタイトル（番号）の一覧を出す。
+    // 益金・損金・資本的支出と修繕費：テーマごとにタイトル・説明文と、関連する通達・記事のタイトル（番号）の一覧を出す。
     // 項目を押すと、その項目が掲載されているタブに移動して全文を開く
     function renderTopics(ul, cls, results, terms) {
       var c = BUNRUI[cls];
@@ -444,7 +444,7 @@
       c.topics.forEach(function (t) {
         if (topicFilter && t.name !== topicFilter) return;
         var items = results.filter(function (a) {
-          return a.topic === t.name;
+          return a.tags[cls].topic === t.name;
         });
         if (!items.length && st.q.trim()) return;
         var groups = [];
@@ -641,29 +641,33 @@
       };
     });
 
-    // 益金・損金の整理表（bunrui.js）を各項目に当てはめる
+    // 整理表（bunrui.js）を各項目に当てはめる。項目は複数の区分（例：損金と資本的支出と修繕費）に属しうる
     var rule = {};
     var order = 0;
     Object.keys(BUNRUI).forEach(function (cls) {
       BUNRUI[cls].topics.forEach(function (t) {
         order++;
         t.rules.forEach(function (r) {
-          rule[r.join("|")] = { cls: cls, topic: t.name, order: order };
+          var key = r.join("|");
+          (rule[key] = rule[key] || []).push({ cls: cls, topic: t.name, order: order });
         });
       });
     });
     var used = {};
     ARTICLES.forEach(function (a) {
-      var key = a.type + "|" + a.category;
-      var hit = rule[key + "|" + (a.path[1] || "")] || rule[key];
-      if (!hit) return;
-      used[hit === rule[key] ? key : key + "|" + a.path[1]] = true;
-      a.cls = hit.cls;
-      a.topic = hit.topic;
-      a.topicOrder = hit.order;
+      a.tags = {};
+      var base = a.type + "|" + a.category;
+      // 個別指定（id）＞ 節まで一致 ＞ 分類（目次の見出し）の順に、区分ごとに最初に当たったものを採る
+      ["id|" + a.id, base + "|" + (a.path[1] || ""), base].forEach(function (key) {
+        (rule[key] || []).forEach(function (hit) {
+          if (a.tags[hit.cls]) return;
+          a.tags[hit.cls] = hit;
+          used[key] = true;
+        });
+      });
     });
     Object.keys(rule).forEach(function (k) {
-      if (!used[k]) console.warn("bunrui.js: 該当する項目がない見出し", k);
+      if (!used[k]) console.warn("bunrui.js: 該当する項目がない見出し・ID", k);
     });
 
     ARTICLES.forEach(function (a) {
@@ -676,7 +680,7 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { classes: ["ekin", "sonkin"], types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
+    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi"], types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
     setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
