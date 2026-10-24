@@ -9,6 +9,7 @@
 | 法人税基本通達 | `/law/tsutatsu/kihon/hojin/01.htm` | 通達番号（例: 9－2－12）ごと | 章（第1章 総則 など） |
 | 租税特別措置法関係通達（法人税編） | `/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm` | 通達番号（例: 61の4(1)－15の2）ごと | 章（第8章 交際費等の課税の特例 など） |
 | 質疑応答事例 | `/law/shitsugi/hojin/01.htm` | 事例ごと | 目次の区分（収益の計上 など） |
+| 文書回答事例 | `/law/bunshokaito/hojin/08_1.htm`（項目別） | 事例ごと（本庁・各国税局の回答ページと同じフォルダの別紙ページ） | 目次の区分（寄附金 など） |
 | タックスアンサー | `/taxes/shiraberu/taxanswer/code/index.htm#code07`（`/taxanswer/hojin/`） | コード番号ごと | 目次の区分（交際費 など） |
 
 「分野」は各出典の目次に国税庁が付けている区分をそのまま使っています（独自の分類付けはしていません）。
@@ -25,7 +26,7 @@
 # データ取得（アクセス間隔は既定 1 秒。取得した HTML は .cache/ に保存され再利用されます）
 python3 scripts/fetch_nta.py
 python3 scripts/fetch_nta.py --refresh      # キャッシュを捨てて最新を取得
-python3 scripts/fetch_nta.py --only sochiho  # 出典を限定（tsutatsu / sochiho / shitsugi / taxanswer）
+python3 scripts/fetch_nta.py --only sochiho  # 出典を限定（tsutatsu / sochiho / shitsugi / bunsho / taxanswer）
 
 # アプリ起動（fetch で JSON を読むため HTTP サーバー経由で開く）
 python3 -m http.server 8000
@@ -38,12 +39,12 @@ GitHub Pages などの静的ホスティングにそのまま置くこともで�
 
 デザインは [消費税区分辞書](https://github.com/yzffromazracing-droid/consumption-tax-dictionary) にそろえています。
 
-- **辞書** … 4 出典をまとめてキーワード検索。出典（法人税基本通達／措置法通達／タックスアンサー／質疑応答事例）と分類で絞り込み
+- **辞書** … 5 出典をまとめてキーワード検索。出典（法人税基本通達／措置法通達／タックスアンサー／質疑応答事例／文書回答事例）と分類で絞り込み
 - **通達** … サブタブ「法人税基本通達」「措置法通達」に分けて、国税庁の目次の順に掲載。章で絞り込み、通達を開くと全文
-- **国税庁の記事** … サブタブ「タックスアンサー」「質疑応答事例」に分けて掲載。分類で絞り込み、記事を開くと全文
+- **国税庁の記事** … サブタブ「タックスアンサー」「質疑応答事例」「文書回答事例」に分けて掲載。分類で絞り込み、記事を開くと全文
 
 各項目を開くと全文（見出し・段落・表）と国税庁の原文リンクを表示します。図は「［図：…（原文を参照）］」と表示し、丸数字（①）・ローマ数字（Ⅰ）・単位記号（㎡ など）の画像は文字に置き換えています。
-タブは URL（`#tab=tsu`、`#tab=tsu&sub=so`、`#tab=nta`、`#tab=nta&sub=qa`）でも直接開けます。
+タブは URL（`#tab=tsu`、`#tab=tsu&sub=so`、`#tab=nta`、`#tab=nta&sub=qa`、`#tab=nta&sub=bk`）でも直接開けます。
 
 ### 検索のしかた
 

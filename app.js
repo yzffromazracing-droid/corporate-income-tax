@@ -8,11 +8,12 @@
     so: { source: "sochiho", label: "措置法通達", short: "措置法通達" },
     ta: { source: "taxanswer", label: "タックスアンサー", short: "タックスアンサー" },
     qa: { source: "shitsugi", label: "質疑応答事例", short: "質疑応答事例" },
+    bk: { source: "bunsho", label: "文書回答事例", short: "文書回答事例" },
   };
-  var TYPE_OF = { tsutatsu: "tsu", sochiho: "so", taxanswer: "ta", shitsugi: "qa" };
+  var TYPE_OF = { tsutatsu: "tsu", sochiho: "so", taxanswer: "ta", shitsugi: "qa", bunsho: "bk" };
   var TABS = ["dict", "tsu", "nta"];
   // サブタブのあるタブ（先頭が既定）
-  var SUBS = { tsu: ["kihon", "so"], nta: ["ta", "qa"] };
+  var SUBS = { tsu: ["kihon", "so"], nta: ["ta", "qa", "bk"] };
 
   var ARTICLES = [];
 
@@ -206,6 +207,7 @@
 
   function noLabel(a) {
     if (a.type === "ta") return "No." + a.number;
+    if (a.type === "bk") return [a.date, a.dept].filter(Boolean).join("　");
     return a.number;
   }
 
@@ -434,13 +436,15 @@
         path: path,
         blocks: r.blocks,
         asof: r.asof || "",
+        date: r.date || "",
+        dept: r.dept || "",
         url: r.url,
         bodyText: bodyText,
         noNorm: norm(r.number),
         titleNorm: norm(r.title),
         pathNorm: norm(path.join(" ")),
         bodyNorm: norm(bodyText),
-        norm: norm([r.number, r.title, path.join(" ")].join(" ")) + "\n" + norm(bodyText),
+        norm: norm([r.number, r.date, r.dept, r.title, path.join(" ")].join(" ")) + "\n" + norm(bodyText),
       };
     });
 
@@ -450,11 +454,12 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { types: ["tsu", "so", "ta", "qa"], showType: true });
+    setupDocTab("dict", { types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
     setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
     setupDocTab("qa", { only: "qa" });
+    setupDocTab("bk", { only: "bk" });
   }
 
   setupTabs();

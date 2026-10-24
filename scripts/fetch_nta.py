@@ -6,6 +6,7 @@
   - 租税特別措置法関係通達（法人税編）
                         https://www.nta.go.jp/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm
   - 質疑応答事例（法人税） https://www.nta.go.jp/law/shitsugi/hojin/01.htm
+  - 文書回答事例（法人税・項目別） https://www.nta.go.jp/law/bunshokaito/hojin/08_1.htm
   - タックスアンサー（法人税） https://www.nta.go.jp/taxes/shiraberu/taxanswer/code/index.htm#code07
 
 使い方:
@@ -33,6 +34,7 @@ BASE = "https://www.nta.go.jp"
 TSUTATSU_INDEX = BASE + "/law/tsutatsu/kihon/hojin/01.htm"
 SOCHIHO_INDEX = BASE + "/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm"
 SHITSUGI_INDEX = BASE + "/law/shitsugi/hojin/01.htm"
+BUNSHO_INDEX = BASE + "/law/bunshokaito/hojin/08_1.htm"
 TAXANSWER_INDEX = BASE + "/taxes/shiraberu/taxanswer/code/index.htm"
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -109,8 +111,10 @@ def title_of(doc):
 
 
 def body_area(doc):
-    """通達・質疑応答事例ページの本文領域（h1 から左カラム末尾まで）を切り出す。"""
+    """本文領域（h1 から左カラム末尾まで）を切り出す。h1 のないページはテンプレートの本文開始位置から。"""
     i = doc.find("<h1")
+    if i < 0:
+        i = doc.find('<!-- InstanceBeginEditable name="bodyArea" -->')
     if i < 0:
         return ""
     ends = [k for k in (doc.find("<!--/left-menu-->", i), doc.find('<div class="right-menu"', i)) if k > 0]
@@ -424,7 +428,9 @@ def parse_tsutatsu_pages(f, pages, source, base, label):
             # 附則など、番号付きの項目で構成されないページはページ単位で収録
             blocks = [to_block(b) for b in blocks_of(body_area(doc))
                       if b["text"] and b["tag"] != "h1" and b["cls"] not in ("skip", "page-top-link")]
-            if blocks:
+            if not blocks:
+                print(f"  警告: 本文を取り出せませんでした {pg['url']}", file=sys.stderr)
+            else:
                 records.append({
                     "id": f"{source}:" + urlparse(pg["url"]).path[len(base):],
                     "source": source, "number": "", "title": page_title,
@@ -507,6 +513,84 @@ def crawl_shitsugi(f):
     return records
 
 
+# ---------------------------------------------------------------- 文書回答事例
+
+BUNSHO_MAX_PAGES = 12  # 1 事例あたりに読む別紙ページの上限
+
+
+def crawl_bunshokaito(f):
+    """文書回答事例（法人税・項目別）。目次は区分見出し（h5）の下に
+    「回答年月日・回答部署・照会事項（リンク）」の表が並ぶ。事例本体は国税庁本庁または各国税局のページで、
+    照会の趣旨・事実関係・理由などは同じフォルダの別紙ページにあるため、それも合わせて全文とする。"""
+    doc = f.get(BUNSHO_INDEX)
+    cat, entries, seen = "", [], set()
+    for b in blocks_of(body_area(doc)):
+        if b["tag"].startswith("h") and b["tag"] != "h1":
+            cat = b["text"].strip("（）()")
+            continue
+        if b["tag"] != "table":
+            continue
+        row = {r[0]["x"]: r[1]["x"] for r in b["rows"] if len(r) >= 2}
+        if "照会事項" not in row:
+            continue
+        entries.append({"category": cat, "date": row.get("回答年月日", ""), "dept": row.get("回答部署", ""),
+                        "title": row["照会事項"]})
+    # 表のリンク先は BlockParser では取れないので、目次 HTML から照会事項のリンクを順に対応付ける
+    hrefs = []
+    for chunk in body_area(doc).split("<table")[1:]:
+        m = re.search(r"照会事項.*?<a\s[^>]*?href=\"([^\"]+)\"", chunk.split("</table>")[0], re.S)
+        if m:
+            hrefs.append(m.group(1))
+    if len(hrefs) != len(entries):
+        raise RuntimeError(f"文書回答事例の目次: 表 {len(entries)} 件とリンク {len(hrefs)} 件が一致しない")
+    cases = []
+    for e, h in zip(entries, hrefs):
+        url = urljoin(BUNSHO_INDEX, h).split("#")[0]
+        if url in seen:
+            continue  # 複数の区分に掲載されている事例は最初の区分で収録
+        seen.add(url)
+        cases.append({**e, "url": url})
+    print(f"[文書回答] 目次 {len(entries)} 件（重複除き {len(cases)} 件）", file=sys.stderr)
+
+    records = []
+    for n, c in enumerate(cases, 1):
+        print(f"[文書回答] {n}/{len(cases)} {c['url']}", file=sys.stderr)
+        doc = f.get(c["url"])
+        if doc is None:
+            continue
+        folder = c["url"].rsplit("/", 1)[0] + "/"
+        blocks, queue, done = [], [(c["url"], doc)], {c["url"]}
+        while queue and len(done) <= BUNSHO_MAX_PAGES:
+            url, page = queue.pop(0)
+            if url != c["url"]:
+                blocks.append(["h", 2, title_of(page)])
+            area = body_area(page)
+            blocks += [to_block(b) for b in blocks_of(area)
+                       if b["text"] and b["tag"] != "h1" and b["cls"] not in ("skip", "page-top-link")]
+            # 同じフォルダの別紙ページ（.htm）をリンク順にたどる
+            for h in re.findall(r'href="([^"#]+)', area):
+                sub = urljoin(url, h)
+                if sub.startswith(folder) and sub.endswith(".htm") and sub not in done:
+                    done.add(sub)
+                    sub_doc = f.get(sub)
+                    if sub_doc is not None:
+                        queue.append((sub, sub_doc))
+        rid = re.sub(r"^/(?:about/organization/|law/)", "", urlparse(c["url"]).path).removesuffix(".htm")
+        records.append({
+            "id": "bunsho:" + rid,
+            "source": "bunsho",
+            "number": "",
+            "title": title_of(doc) or c["title"],
+            "category": c["category"],
+            "path": [c["category"]],
+            "date": c["date"],
+            "dept": c["dept"],
+            "blocks": blocks,
+            "url": c["url"],
+        })
+    return records
+
+
 # ---------------------------------------------------------------- タックスアンサー
 
 def crawl_taxanswer(f):
@@ -583,14 +667,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--delay", type=float, default=1.0, help="ネットワークアクセスの間隔（秒）")
     ap.add_argument("--refresh", action="store_true", help="キャッシュを無視して再取得する")
-    ap.add_argument("--only", choices=["tsutatsu", "sochiho", "shitsugi", "taxanswer"], action="append")
+    ap.add_argument("--only", choices=["tsutatsu", "sochiho", "shitsugi", "bunsho", "taxanswer"], action="append")
     ap.add_argument("--out", type=Path, default=OUT_PATH)
     args = ap.parse_args()
 
     f = Fetcher(args.delay, args.refresh)
-    targets = args.only or ["tsutatsu", "sochiho", "shitsugi", "taxanswer"]
+    targets = args.only or ["tsutatsu", "sochiho", "shitsugi", "bunsho", "taxanswer"]
     crawlers = {"tsutatsu": crawl_tsutatsu, "sochiho": crawl_sochiho, "shitsugi": crawl_shitsugi,
-                "taxanswer": crawl_taxanswer}
+                "bunsho": crawl_bunshokaito, "taxanswer": crawl_taxanswer}
     records = []
     for t in targets:
         records += crawlers[t](f)
@@ -608,6 +692,7 @@ def main():
             "tsutatsu": {"label": "法人税基本通達", "index": TSUTATSU_INDEX},
             "sochiho": {"label": "租税特別措置法関係通達（法人税編）", "index": SOCHIHO_INDEX},
             "shitsugi": {"label": "質疑応答事例", "index": SHITSUGI_INDEX},
+            "bunsho": {"label": "文書回答事例", "index": BUNSHO_INDEX},
             "taxanswer": {"label": "タックスアンサー", "index": TAXANSWER_INDEX + "#code07"},
         },
         "records": records,

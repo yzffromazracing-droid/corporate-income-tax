@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>法人税区分辞書</title>
-  <meta name="description" content="法人税基本通達・措置法通達・タックスアンサー・質疑応答事例（国税庁ホームページ）をキーワードで調べられる辞書">
+  <meta name="description" content="法人税基本通達・措置法通達・タックスアンサー・質疑応答事例・文書回答事例（国税庁ホームページ）をキーワードで調べられる辞書">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -29,7 +29,7 @@
       </div>
       <p id="dict-count" class="count"></p>
       <ul id="dict-results" class="results"></ul>
-      <p class="source">出典：国税庁ホームページ（<a href="https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm" target="_blank" rel="noopener">法人税基本通達</a>・<a href="https://www.nta.go.jp/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm" target="_blank" rel="noopener">租税特別措置法関係通達（法人税編）</a>・<a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/code/index.htm#code07" target="_blank" rel="noopener">タックスアンサー（法人税）</a>・<a href="https://www.nta.go.jp/law/shitsugi/hojin/01.htm" target="_blank" rel="noopener">質疑応答事例（法人税）</a>）　取得日：<span class="fetched"></span><br>スペース区切りで複数語を指定でき（すべてを含むものを表示）、「-語」で除外できます。検索語は本文にも一致します。</p>
+      <p class="source">出典：国税庁ホームページ（<a href="https://www.nta.go.jp/law/tsutatsu/kihon/hojin/01.htm" target="_blank" rel="noopener">法人税基本通達</a>・<a href="https://www.nta.go.jp/law/tsutatsu/kobetsu/hojin/sochiho/750214/01.htm" target="_blank" rel="noopener">租税特別措置法関係通達（法人税編）</a>・<a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/code/index.htm#code07" target="_blank" rel="noopener">タックスアンサー（法人税）</a>・<a href="https://www.nta.go.jp/law/shitsugi/hojin/01.htm" target="_blank" rel="noopener">質疑応答事例（法人税）</a>・<a href="https://www.nta.go.jp/law/bunshokaito/hojin/08_1.htm" target="_blank" rel="noopener">文書回答事例（法人税）</a>）　取得日：<span class="fetched"></span><br>スペース区切りで複数語を指定でき（すべてを含むものを表示）、「-語」で除外できます。検索語は本文にも一致します。</p>
     </section>
 
     <!-- 通達 -->
@@ -69,6 +69,7 @@
       <nav class="subtabs" role="tablist" aria-label="記事の種類">
         <button class="subtab is-active" role="tab" data-sub="ta" aria-selected="true">タックスアンサー</button>
         <button class="subtab" role="tab" data-sub="qa" aria-selected="false">質疑応答事例</button>
+        <button class="subtab" role="tab" data-sub="bk" aria-selected="false">文書回答事例</button>
       </nav>
 
       <div id="sub-ta" class="subpanel" role="tabpanel">
@@ -93,6 +94,18 @@
         <p id="qa-count" class="count"></p>
         <ul id="qa-results" class="results"></ul>
         <p class="source">出典：<a href="https://www.nta.go.jp/law/shitsugi/hojin/01.htm" target="_blank" rel="noopener">質疑応答事例（法人税）</a>（国税庁ホームページ）　取得日：<span class="fetched"></span><br>事例を開くと全文（照会要旨・回答要旨・関係法令通達・注記）を表示します。図は掲載していないため、図を含む事例や最新の内容は必ずリンク先の原文でご確認ください。</p>
+      </div>
+
+      <div id="sub-bk" class="subpanel" role="tabpanel" hidden>
+        <div class="search-box">
+          <input id="bk-q" type="search" placeholder="例：債権放棄、組織再編成、東京国税局、令和7年" autocomplete="off" aria-label="文書回答事例を検索">
+        </div>
+        <div class="filters">
+          <select id="bk-category-filter" class="select" aria-label="分類で絞り込み"></select>
+        </div>
+        <p id="bk-count" class="count"></p>
+        <ul id="bk-results" class="results"></ul>
+        <p class="source">出典：<a href="https://www.nta.go.jp/law/bunshokaito/hojin/08_1.htm" target="_blank" rel="noopener">文書回答事例（法人税・項目別）</a>（国税庁ホームページ）　取得日：<span class="fetched"></span><br>事例を開くと全文（照会・回答の表と、同じ事例の別紙ページの照会の趣旨・事実関係・理由など）を表示します。文書回答は照会者が示した事実関係を前提としたものです。PDFの添付資料や図は掲載していないため、必ずリンク先の原文でご確認ください。</p>
       </div>
     </section>
   </main>
