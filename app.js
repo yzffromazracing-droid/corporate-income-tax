@@ -429,7 +429,7 @@
       $(prefix + "-count").textContent = hit.length ? "選択した項目を表示しています" : "該当する項目が見つかりませんでした。";
     }
 
-    // 益金・損金・資本的支出と修繕費・繰延資産・引当金：テーマごとにタイトル・説明文と、関連する通達・記事のタイトル（番号）の一覧を出す。
+    // 益金・損金・資本的支出と修繕費・繰延資産・引当金・役員報酬と給与：テーマごとにタイトル・説明文と、関連する通達・記事のタイトル（番号）の一覧を出す。
     // 項目を押すと、その項目が掲載されているタブに移動して全文を開く
     function renderTopics(ul, cls, results, terms) {
       var c = BUNRUI[cls];
@@ -680,7 +680,7 @@
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate"], types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
+    setupDocTab("dict", { classes: ["ekin", "sonkin", "shushi", "kurinobe", "hikiate", "yakuin"], types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
     setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
