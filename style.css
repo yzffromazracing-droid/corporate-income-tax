@@ -265,6 +265,21 @@ h5.article-h { font-size: 0.92rem; }
 .chip-so.is-active { background: var(--men); border-color: var(--men); }
 .chip-bk.is-active { background: var(--fu); border-color: var(--fu); }
 
+/* 辞書タブの益金・損金 */
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 2px 2px;
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+  list-style: none;
+}
+.group-head:first-child { margin-top: 0; }
+.group-count { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+
 /* 国税庁の記事のサブタブ */
 .subtabs { display: flex; gap: 6px; margin-bottom: 12px; }
 .subtab {

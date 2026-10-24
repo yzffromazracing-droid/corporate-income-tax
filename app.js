@@ -88,6 +88,8 @@
     list.forEach(function (a) {
       if (filter.type && a.type !== filter.type) return;
       if (filter.category && a.category !== filter.category) return;
+      if (filter.cls && a.cls !== filter.cls) return;
+      if (filter.topic && a.topic !== filter.topic) return;
       var score = 0;
       for (var i = 0; i < query.exc.length; i++) if (a.norm.indexOf(query.exc[i]) !== -1) return;
       for (var j = 0; j < query.inc.length; j++) {
@@ -266,13 +268,13 @@
     var select = $(prefix + "-category-filter");
 
     if (opts.types && chips) {
-      [""].concat(opts.types).forEach(function (code) {
+      [""].concat(opts.classes || [], opts.types).forEach(function (code) {
         var btn = el("button", {
           class: "chip" + (code ? " chip-" + code : "") + (code === st.type ? " is-active" : ""),
           type: "button",
           "data-type": code,
           "aria-pressed": String(code === st.type),
-          text: code ? TYPES[code].label : "すべて",
+          text: !code ? "すべて" : BUNRUI[code] ? BUNRUI[code].label : TYPES[code].label,
         });
         btn.addEventListener("click", function () {
           st.type = code;
@@ -297,12 +299,23 @@
       renderList(true);
     });
 
-    // 種別に応じて分類の選択肢を作り直す（国税庁の目次順）
+    // 種別に応じて分類の選択肢を作り直す（国税庁の目次順）。益金・損金ではテーマの一覧にする
     function fillCategories() {
       var seen = {};
       select.textContent = "";
-      select.appendChild(el("option", { value: "", text: opts.allLabel || "すべての分類" }));
       var found = false;
+      if (BUNRUI[st.type]) {
+        select.appendChild(el("option", { value: "", text: "すべてのテーマ" }));
+        BUNRUI[st.type].topics.forEach(function (t) {
+          var key = "topic|" + t.name;
+          if (key === st.category) found = true;
+          select.appendChild(el("option", { value: key, text: t.name }));
+        });
+        if (!found) st.category = "";
+        select.value = st.category;
+        return;
+      }
+      select.appendChild(el("option", { value: "", text: opts.allLabel || "すべての分類" }));
       list.forEach(function (a) {
         if (st.type && a.type !== st.type) return;
         var key = a.type + "|" + a.category;
@@ -318,16 +331,47 @@
 
     function renderList(resetLimit) {
       if (resetLimit) st.limit = PAGE_SIZE;
-      // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）
+      // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）、益金・損金のテーマは「topic|テーマ」
+      var cls = BUNRUI[st.type] ? st.type : "";
       var sep = st.category.indexOf("|");
+      var isTopic = st.category.indexOf("topic|") === 0;
       var results = searchArticles(list, st.q, {
-        type: sep >= 0 ? st.category.slice(0, sep) : st.type,
-        category: sep >= 0 ? st.category.slice(sep + 1) : "",
+        type: cls ? "" : sep >= 0 ? st.category.slice(0, sep) : st.type,
+        category: !isTopic && sep >= 0 ? st.category.slice(sep + 1) : "",
+        cls: cls,
+        topic: isTopic ? st.category.slice(6) : "",
+      });
+      // 益金・損金はテーマ順に並べ、テーマごとに見出しを付ける（テーマ内は検索の一致順・目次順）
+      if (cls) {
+        results = results
+          .map(function (a, i) {
+            return { a: a, i: i };
+          })
+          .sort(function (x, y) {
+            return x.a.topicOrder - y.a.topicOrder || x.i - y.i;
+          })
+          .map(function (x) {
+            return x.a;
+          });
+      }
+      var counts = {};
+      results.forEach(function (a) {
+        counts[a.topic] = (counts[a.topic] || 0) + 1;
       });
       var terms = parseQuery(st.q).inc;
       var ul = $(prefix + "-results");
       ul.textContent = "";
+      var lastTopic = null;
       results.slice(0, st.limit).forEach(function (a) {
+        if (cls && a.topic !== lastTopic) {
+          lastTopic = a.topic;
+          ul.appendChild(
+            el("li", { class: "group-head group-" + cls }, [
+              el("span", { text: BUNRUI[cls].label + "　" + a.topic }),
+              el("span", { class: "group-count", text: counts[a.topic] + " 件" }),
+            ])
+          );
+        }
         ul.appendChild(renderOne(a, terms, opts));
       });
       if (!results.length) {
@@ -448,13 +492,38 @@
       };
     });
 
+    // 益金・損金の整理表（bunrui.js）を各項目に当てはめる
+    var rule = {};
+    var order = 0;
+    Object.keys(BUNRUI).forEach(function (cls) {
+      BUNRUI[cls].topics.forEach(function (t) {
+        order++;
+        t.rules.forEach(function (r) {
+          rule[r.join("|")] = { cls: cls, topic: t.name, order: order };
+        });
+      });
+    });
+    var used = {};
+    ARTICLES.forEach(function (a) {
+      var key = a.type + "|" + a.category;
+      var hit = rule[key + "|" + (a.path[1] || "")] || rule[key];
+      if (!hit) return;
+      used[hit === rule[key] ? key : key + "|" + a.path[1]] = true;
+      a.cls = hit.cls;
+      a.topic = hit.topic;
+      a.topicOrder = hit.order;
+    });
+    Object.keys(rule).forEach(function (k) {
+      if (!used[k]) console.warn("bunrui.js: 該当する項目がない見出し", k);
+    });
+
     var fetched = data.generated_at.slice(0, 10);
     Array.prototype.forEach.call(document.querySelectorAll(".fetched"), function (n) {
       n.textContent = fetched;
     });
     $("item-total").textContent = "収録 " + ARTICLES.length.toLocaleString() + " 件（取得日：" + fetched + "）";
 
-    setupDocTab("dict", { types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
+    setupDocTab("dict", { classes: ["ekin", "sonkin"], types: ["tsu", "so", "ta", "qa", "bk"], showType: true });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
     setupDocTab("so", { only: "so", allLabel: "すべての章" });
     setupDocTab("ta", { only: "ta" });
