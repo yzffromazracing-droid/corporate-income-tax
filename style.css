@@ -265,20 +265,62 @@ h5.article-h { font-size: 0.92rem; }
 .chip-so.is-active { background: var(--men); border-color: var(--men); }
 .chip-bk.is-active { background: var(--fu); border-color: var(--fu); }
 
-/* 辞書タブの益金・損金 */
-.group-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 6px 2px 2px;
-  border-bottom: 2px solid var(--accent);
-  color: var(--accent);
-  font-weight: 700;
+/* ボタン（消費税区分辞書と同じ） */
+.btn {
+  padding: 10px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn { color: #12151b; }
+}
+
+.btn-ghost { background: var(--surface); color: var(--accent); }
+.focus-bar .btn { padding: 6px 14px; font-size: 0.88rem; }
+
+/* 辞書タブの益金・損金：テーマごとの説明と関連項目のタイトル一覧 */
+.class-intro, .topic-card {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   list-style: none;
 }
-.group-head:first-child { margin-top: 0; }
-.group-count { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+.class-intro { border-top: 4px solid var(--accent); }
+.class-title { margin: 0 0 6px; font-size: 1.15rem; }
+.class-desc, .topic-desc { margin: 0 0 8px; font-size: 0.92rem; }
+.class-note { margin: 0; color: var(--muted); font-size: 0.8rem; }
+.topic-title { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font-size: 1.05rem; color: var(--accent); }
+.topic-count { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+.ref-group { margin-top: 10px; }
+.ref-head { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 0.85rem; }
+.ref-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.ref-list li { border-bottom: 1px solid var(--border); }
+.ref-link {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 4px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.ref-link:hover { background: var(--bg); color: var(--accent); }
+.ref-link::after { content: "›"; margin-left: auto; padding-left: 8px; color: var(--muted); }
+.ref-no { flex-shrink: 0; min-width: 6.5em; color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.ref-title { overflow-wrap: anywhere; }
+.ref-more { margin-top: 4px; padding: 4px 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.focus-bar { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; }
 
 /* 国税庁の記事のサブタブ */
 .subtabs { display: flex; gap: 6px; margin-bottom: 12px; }
