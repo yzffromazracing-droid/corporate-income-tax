@@ -114,10 +114,43 @@ def body_area(doc):
     return doc[i:min(ends)] if ends else doc[i:]
 
 
+def circled(n):
+    if 1 <= n <= 20:
+        return chr(0x2460 + n - 1)
+    if 21 <= n <= 35:
+        return chr(0x3251 + n - 21)
+    if 36 <= n <= 50:
+        return chr(0x32B1 + n - 36)
+    return f"({n})"
+
+
+# 国税庁ページで文字の代わりに使われている画像（画像の内容を確認して対応付けた）
+MARK_IMAGES = {"m2": "㎡", "mm": "㎜", "cc": "㏄", "t": "t", "kara": "〜"}
+
+
+def img_text(src, alt):
+    """本文中の画像を文字に置き換える。丸数字・単位記号は文字に、図は［図：…（原文を参照）］とする。"""
+    path = urlparse(src or "").path
+    m = re.search(r"/(?:shared/images/decimal|category/icon_img/no_img)/0*(\d+)\.gif$", path)
+    if m:
+        return circled(int(m.group(1)))
+    m = re.search(r"/category/icon_img/roman/0*(\d+)(s?)\.gif$", path)
+    if m and 1 <= int(m.group(1)) <= 12:
+        return chr((0x2170 if m.group(2) else 0x2160) + int(m.group(1)) - 1)
+    m = re.search(r"/shared/images/mark/([a-z0-9]+)\.gif$", path)
+    if m and m.group(1) in MARK_IMAGES:
+        return MARK_IMAGES[m.group(1)]
+    if "/template/" in path or path.startswith("/img/"):
+        return ""
+    alt = norm_space(alt or "")
+    return f"［図：{alt}（原文を参照）］" if alt else "［図（原文を参照）］"
+
+
 class BlockParser(HTMLParser):
     """HTML をブロック要素単位のテキスト列に平坦化する。
 
-    各ブロックは {tag, cls, id, text, links} を持つ。
+    各ブロックは {tag, cls, id, text, links} を持つ。表は tag="table" で、rows に
+    セル {x: 文字列, h: 見出しセルか, r: rowspan, c: colspan} の二次元配列を持つ。
     """
 
     def __init__(self):
@@ -126,6 +159,8 @@ class BlockParser(HTMLParser):
         self.cur = None
         self.link = None
         self.skip = 0
+        self.table = None   # 表の読み取り中: {"rows": [...], "depth": 入れ子の深さ}
+        self.cell = None
         self._new("text", {})
 
     def _new(self, tag, attrs):
@@ -139,19 +174,43 @@ class BlockParser(HTMLParser):
             self.blocks.append({"tag": c["tag"], "cls": c["cls"], "id": c["id"], "text": text,
                                 "links": c["links"]})
 
+    def _emit(self, s):
+        if self.cell is not None:
+            self.cell["parts"].append(s)
+        elif self.table is None:
+            self.cur["parts"].append(s)
+
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         if tag in ("script", "style", "noscript"):
             self.skip += 1
+            return
+        if self.table is not None:
+            if tag == "table":
+                self.table["depth"] += 1
+            elif self.table["depth"] == 1 and tag == "tr":
+                self.table["rows"].append([])
+            elif self.table["depth"] == 1 and tag in ("td", "th"):
+                if not self.table["rows"]:
+                    self.table["rows"].append([])
+                self.cell = {"parts": [], "h": tag == "th",
+                             "r": int(a.get("rowspan") or 1), "c": int(a.get("colspan") or 1)}
+            elif tag in ("br", "p", "li", "div", "tr") and self.cell is not None:
+                self.cell["parts"].append("\n")
+            elif tag == "img":
+                self._emit(img_text(a.get("src"), a.get("alt")))
+            return
+        if tag == "table":
+            self._flush()
+            self.table = {"rows": [], "depth": 1}
             return
         if tag in BLOCK_TAGS:
             self._flush()
             self._new(tag, a)
         elif tag == "br":
             self.cur["parts"].append("\n")
-        elif tag in ("td", "th"):
-            if self.cur["parts"]:
-                self.cur["parts"].append("　")
+        elif tag == "img":
+            self._emit(img_text(a.get("src"), a.get("alt")))
         elif tag == "a":
             if a.get("id") or a.get("name"):
                 self.cur["id"] = self.cur["id"] or a.get("id") or a.get("name")
@@ -161,6 +220,22 @@ class BlockParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag in ("script", "style", "noscript"):
             self.skip = max(0, self.skip - 1)
+            return
+        if self.table is not None:
+            if tag == "table":
+                self.table["depth"] -= 1
+                if self.table["depth"] == 0:
+                    rows = [r for r in self.table["rows"] if r]
+                    if rows:
+                        self.blocks.append({"tag": "table", "cls": "", "id": "", "links": [], "rows": rows,
+                                            "text": "\n".join("　".join(c["x"] for c in r) for r in rows)})
+                    self.table = None
+                    self._new("text", {})
+            elif self.table["depth"] == 1 and tag in ("td", "th") and self.cell is not None:
+                cell = self.cell
+                self.cell = None
+                self.table["rows"][-1].append({"x": norm_space("".join(cell["parts"])), "h": cell["h"],
+                                               "r": cell["r"], "c": cell["c"]})
             return
         if tag in BLOCK_TAGS:
             self._flush()
@@ -173,14 +248,44 @@ class BlockParser(HTMLParser):
     def handle_data(self, data):
         if self.skip:
             return
-        self.cur["parts"].append(data)
-        if self.link is not None:
+        self._emit(data)
+        if self.link is not None and self.table is None:
             self.link["text"] += data
 
     def close(self):
         super().close()
         self._flush()
         return self.blocks
+
+
+def to_block(b):
+    """表示用の本文ブロック（JSON の blocks の要素）に変換する。
+
+    ["h", 見出しレベル, 文字列] / ["p", 文字列] / ["li", 文字列] /
+    ["t", 行の配列]（セルは {"x": 文字列, "h": 1（見出しセル）, "r": rowspan, "c": colspan}）
+    """
+    if b["tag"] == "table":
+        rows = []
+        for r in b["rows"]:
+            row = []
+            for c in r:
+                cell = {"x": c["x"]}
+                if c["h"]:
+                    cell["h"] = 1
+                if c["r"] > 1:
+                    cell["r"] = c["r"]
+                if c["c"] > 1:
+                    cell["c"] = c["c"]
+                row.append(cell)
+            rows.append(row)
+        return ["t", rows]
+    if b["tag"] == "h2":
+        return ["h", 2, b["text"]]
+    if b["tag"] in ("h3", "h4", "h5", "h6"):
+        return ["h", 3, b["text"]]
+    if b["tag"] == "li":
+        return ["li", b["text"]]
+    return ["p", b["text"]]
 
 
 def blocks_of(fragment):
@@ -265,35 +370,44 @@ def crawl_tsutatsu(f):
         for b in blocks_of(body_area(doc)):
             if b["tag"] == "h1" or b["cls"] in ("skip", "page-top-link"):
                 continue
-            if b["tag"] in ("h2",) and re.match(r"^[（(].*[)）]$", b["text"]):
+            # 見出し「（…）」。閉じ括弧が欠けているページもあるため開き括弧だけで判定する
+            if b["tag"] in ("h2",) and re.match(r"^[（(]", b["text"]):
                 caption = b["text"]
                 continue
             if b["tag"] in ("h2", "h3", "h4", "h5"):
                 heading = b["text"]
-                caption = ""
+                # 括弧なしで書かれた見出しもある（例: 12の5－3－3）。直後が通達ならその見出しとして使う
+                caption = "" if re.match(r"^第[0-9０-９一二三四五六七八九十]", b["text"]) else b["text"]
                 continue
             m = TSUTATSU_NO.match(b["text"]) if b["tag"] == "p" else None
             if m:
                 number = m.group(1)
                 body = b["text"][m.end():]
-                items.append({"number": number, "caption": caption, "heading": heading, "lines": [body]})
+                if caption == heading:
+                    heading = ""
+                items.append({"number": number, "caption": caption, "heading": heading, "blocks": [["p", body]]})
                 caption = ""
             elif items and b["text"]:
-                items[-1]["lines"].append(b["text"])
+                items[-1]["blocks"].append(to_block(b))
         if not items:
             # 附則など、番号付きの項目で構成されないページはページ単位で収録
-            text = "\n".join(b["text"] for b in blocks_of(body_area(doc))
-                             if b["text"] and b["tag"] != "h1" and b["cls"] != "page-top-link")
-            if text:
+            blocks = [to_block(b) for b in blocks_of(body_area(doc))
+                      if b["text"] and b["tag"] != "h1" and b["cls"] not in ("skip", "page-top-link")]
+            if blocks:
                 records.append({
                     "id": "tsutatsu:" + urlparse(pg["url"]).path.split("/hojin/")[1],
                     "source": "tsutatsu", "number": "", "title": page_title,
-                    "category": pg["chapter"], "path": path, "body": text, "url": pg["url"],
+                    "category": pg["chapter"], "path": path, "blocks": blocks, "url": pg["url"],
                 })
             continue
         for it in items:
             num_ascii = it["number"].replace("－", "-").replace("‐", "-").replace("−", "-")
-            title = it["caption"].strip("（）()") if it["caption"] else (it["heading"] or page_title)
+            if it["caption"]:
+                title = it["caption"].strip("（）() ")
+            elif re.match(r"^削除|^[（(].*削除[)）]$", it["blocks"][0][1]):
+                title = "削除"
+            else:
+                title = "（見出しなし）"
             records.append({
                 "id": "tsutatsu:" + num_ascii,
                 "source": "tsutatsu",
@@ -301,16 +415,13 @@ def crawl_tsutatsu(f):
                 "title": title,
                 "category": pg["chapter"],
                 "path": path + ([it["heading"]] if it["heading"] and it["heading"] not in path else []),
-                "body": "\n".join(it["lines"]),
+                "blocks": it["blocks"],
                 "url": pg["url"],
             })
     return records
 
 
 # ---------------------------------------------------------------- 質疑応答事例
-
-SHITSUGI_SECTIONS = ("照会要旨", "回答要旨", "関係法令通達")
-
 
 def crawl_shitsugi(f):
     doc = f.get(SHITSUGI_INDEX)
@@ -334,24 +445,20 @@ def crawl_shitsugi(f):
         doc = f.get(e["url"])
         if doc is None:
             continue
-        sections, cur, note = {}, None, ""
+        blocks, laws, cur, note = [], [], None, ""
         for b in blocks_of(body_area(doc)):
-            if b["tag"] == "h1" or b["cls"] in ("skip", "page-top-link"):
+            if b["tag"] == "h1" or b["cls"] in ("skip", "page-top-link") or not b["text"]:
                 continue
             if b["tag"].startswith("h"):
-                key = b["text"].strip("【】[]")
-                cur = key
-                sections.setdefault(cur, [])
+                cur = b["text"].strip("【】[]")
+                blocks.append(["h", 2, cur])
                 continue
             if "red" in b["cls"].split() and b["text"].startswith("注記"):
                 note = b["text"]
-                continue
-            if cur and b["text"]:
-                sections[cur].append(b["text"])
-        body_parts = []
-        for k, v in sections.items():
-            if v:
-                body_parts.append(f"【{k}】\n" + "\n".join(v))
+            elif cur == "関係法令通達":
+                laws.append(b["text"])
+            if cur:
+                blocks.append(to_block(b))
         m = re.search(r"([令平]和?成?\d+年\d+月\d+日)現在", note)
         rid = urlparse(e["url"]).path.split("/hojin/")[1].removesuffix(".htm")
         records.append({
@@ -361,8 +468,8 @@ def crawl_shitsugi(f):
             "title": title_of(doc) or e["title"],
             "category": e["category"],
             "path": [e["category"]],
-            "body": "\n".join(body_parts),
-            "laws": "\n".join(sections.get("関係法令通達", [])),
+            "blocks": blocks,
+            "laws": "\n".join(laws),
             "asof": m.group(1) if m else "",
             "url": e["url"],
         })
@@ -396,14 +503,17 @@ def crawl_taxanswer(f):
         a = doc.find("<h1")
         z = doc.find('<div class="contents-feedback"', a)
         frag = doc[a:z if z > a else None]
-        sections, cur, asof, h1 = {}, None, "", ""
+        blocks, laws, cur, asof, h1 = [], [], None, "", ""
         for b in blocks_of(frag):
             if b["tag"] == "h1":
                 h1 = b["text"]
                 continue
+            if not b["text"]:
+                continue
             if b["tag"] == "h2":
                 cur = b["text"]
-                sections.setdefault(cur, [])
+                if cur != "お問い合わせ先":
+                    blocks.append(["h", 2, cur])
                 continue
             if cur is None:
                 m = re.match(r"^\[(.+?)現在法令等\]$", b["text"])
@@ -412,16 +522,15 @@ def crawl_taxanswer(f):
                 continue
             if cur == "お問い合わせ先":
                 continue
-            if b["text"]:
-                sections[cur].append(("■ " if b["tag"] in ("h3", "h4") else "") + b["text"])
+            if cur == "根拠法令等":
+                laws.append(b["text"])
+            blocks.append(to_block(b))
         number = ""
         m = re.match(r"^No\.(\d+(?:-\d+)?)\s*(.*)$", h1)
         if m:
             number, title = m.group(1), m.group(2)
         else:
             title = h1 or e["title"]
-        body = "\n".join(f"【{k}】\n" + "\n".join(v) for k, v in sections.items()
-                         if v and k not in ("お問い合わせ先", "対象税目"))
         records.append({
             "id": "taxanswer:" + (number or urlparse(e["url"]).path.rsplit("/", 1)[1]),
             "source": "taxanswer",
@@ -429,8 +538,8 @@ def crawl_taxanswer(f):
             "title": title,
             "category": e["category"],
             "path": [e["category"]],
-            "body": body,
-            "laws": "\n".join(sections.get("根拠法令等", [])),
+            "blocks": blocks,
+            "laws": "\n".join(laws),
             "asof": asof,
             "url": e["url"],
         })
