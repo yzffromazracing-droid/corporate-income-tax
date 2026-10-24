@@ -14,8 +14,19 @@
   var TABS = ["dict", "tsu", "nta"];
   // サブタブのあるタブ（先頭が既定）
   var SUBS = { tsu: ["kihon", "so"], nta: ["ta", "qa", "bk"] };
+  // 種別ごとの掲載先（タブ・サブタブ・一覧の要素ID接頭辞）
+  var HOME = {
+    tsu: { tab: "tsu", sub: "kihon" },
+    so: { tab: "tsu", sub: "so" },
+    ta: { tab: "nta", sub: "ta" },
+    qa: { tab: "nta", sub: "qa" },
+    bk: { tab: "nta", sub: "bk" },
+  };
+  var REF_PREVIEW = 8; // 益金・損金のテーマで出典ごとに最初に表示する件数
+  var INSTANCES = {};
 
   var ARTICLES = [];
+  var ARTICLES_BY_ID = {};
 
   function $(id) {
     return document.getElementById(id);
@@ -260,7 +271,7 @@
    * opts.allLabel : 分類の選択肢の「すべて」の表記
    */
   function setupDocTab(prefix, opts) {
-    var st = { q: "", type: "", category: "", limit: PAGE_SIZE };
+    var st = { q: "", type: "", category: "", limit: PAGE_SIZE, focus: "" };
     var list = ARTICLES.filter(function (a) {
       return !opts.only || a.type === opts.only;
     });
@@ -292,12 +303,36 @@
 
     select.addEventListener("change", function (e) {
       st.category = e.target.value;
+      if (st.focus) clearFocus();
       renderList(true);
     });
     $(prefix + "-q").addEventListener("input", function (e) {
       st.q = e.target.value;
+      if (st.focus) clearFocus();
       renderList(true);
     });
+
+    // 辞書（益金・損金）から移動してきた項目だけを開いて表示する
+    function clearFocus() {
+      st.focus = "";
+      if (view.id) {
+        view.id = "";
+        writeHash();
+      }
+    }
+    INSTANCES[prefix] = {
+      focus: function (id) {
+        if (st.focus === id) return;
+        st.focus = id;
+        if (id) {
+          st.q = "";
+          $(prefix + "-q").value = "";
+          st.category = "";
+          select.value = "";
+        }
+        renderList(true);
+      },
+    };
 
     // 種別に応じて分類の選択肢を作り直す（国税庁の目次順）。益金・損金ではテーマの一覧にする
     function fillCategories() {
@@ -333,6 +368,7 @@
       if (resetLimit) st.limit = PAGE_SIZE;
       // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）、益金・損金のテーマは「topic|テーマ」
       var cls = BUNRUI[st.type] ? st.type : "";
+      if (st.focus) return renderFocus();
       var sep = st.category.indexOf("|");
       var isTopic = st.category.indexOf("topic|") === 0;
       var results = searchArticles(list, st.q, {
@@ -341,37 +377,13 @@
         cls: cls,
         topic: isTopic ? st.category.slice(6) : "",
       });
-      // 益金・損金はテーマ順に並べ、テーマごとに見出しを付ける（テーマ内は検索の一致順・目次順）
-      if (cls) {
-        results = results
-          .map(function (a, i) {
-            return { a: a, i: i };
-          })
-          .sort(function (x, y) {
-            return x.a.topicOrder - y.a.topicOrder || x.i - y.i;
-          })
-          .map(function (x) {
-            return x.a;
-          });
-      }
-      var counts = {};
-      results.forEach(function (a) {
-        counts[a.topic] = (counts[a.topic] || 0) + 1;
-      });
       var terms = parseQuery(st.q).inc;
       var ul = $(prefix + "-results");
       ul.textContent = "";
-      var lastTopic = null;
+      $(prefix + "-count").textContent =
+        st.q.trim() || st.category || st.type ? results.length + " 件" : "全 " + results.length + " 件";
+      if (cls) return renderTopics(ul, cls, results, terms);
       results.slice(0, st.limit).forEach(function (a) {
-        if (cls && a.topic !== lastTopic) {
-          lastTopic = a.topic;
-          ul.appendChild(
-            el("li", { class: "group-head group-" + cls }, [
-              el("span", { text: BUNRUI[cls].label + "　" + a.topic }),
-              el("span", { class: "group-count", text: counts[a.topic] + " 件" }),
-            ])
-          );
-        }
         ul.appendChild(renderOne(a, terms, opts));
       });
       if (!results.length) {
@@ -390,8 +402,107 @@
         ul.appendChild(el("li", { class: "empty" }, [more]));
       }
       if (results.length === 1) ul.querySelector("details").open = true;
-      $(prefix + "-count").textContent =
-        st.q.trim() || st.category || st.type ? results.length + " 件" : "全 " + results.length + " 件";
+    }
+
+    function renderFocus() {
+      var ul = $(prefix + "-results");
+      ul.textContent = "";
+      var hit = list.filter(function (a) {
+        return a.id === st.focus;
+      });
+      var fromDict = history.state && history.state.fromDict;
+      var back = el("button", { class: "btn btn-ghost", type: "button", text: fromDict ? "← 益金・損金に戻る" : "← 辞書へ" });
+      back.addEventListener("click", function () {
+        if (fromDict) history.back();
+        else location.hash = "";
+      });
+      var all = el("button", { class: "btn btn-ghost", type: "button", text: "この一覧をすべて表示" });
+      all.addEventListener("click", function () {
+        clearFocus();
+        renderList(true);
+      });
+      ul.appendChild(el("li", { class: "focus-bar" }, [back, all]));
+      hit.forEach(function (a) {
+        ul.appendChild(renderOne(a, [], opts));
+      });
+      if (hit.length) ul.querySelector("details").open = true;
+      $(prefix + "-count").textContent = hit.length ? "選択した項目を表示しています" : "該当する項目が見つかりませんでした。";
+    }
+
+    // 益金・損金：テーマごとにタイトル・説明文と、関連する通達・記事のタイトル（番号）の一覧を出す。
+    // 項目を押すと、その項目が掲載されているタブに移動して全文を開く
+    function renderTopics(ul, cls, results, terms) {
+      var c = BUNRUI[cls];
+      ul.appendChild(
+        el("li", { class: "class-intro" }, [
+          el("h2", { class: "class-title", text: c.label }),
+          el("p", { class: "class-desc", text: c.desc }),
+          el("p", { class: "class-note", text: "説明は本辞書による概要です。項目を押すと、掲載先のタブで全文と国税庁の原文リンクを表示します。" }),
+        ])
+      );
+      var topicFilter = st.category.indexOf("topic|") === 0 ? st.category.slice(6) : "";
+      c.topics.forEach(function (t) {
+        if (topicFilter && t.name !== topicFilter) return;
+        var items = results.filter(function (a) {
+          return a.topic === t.name;
+        });
+        if (!items.length && st.q.trim()) return;
+        var groups = [];
+        Object.keys(TYPES).forEach(function (code) {
+          var g = items.filter(function (a) {
+            return a.type === code;
+          });
+          if (g.length) groups.push(renderRefGroup(code, g, terms));
+        });
+        ul.appendChild(
+          el("li", { class: "topic-card" }, [
+            el("h3", { class: "topic-title" }, [
+              el("span", { text: t.name }),
+              el("span", { class: "topic-count", text: items.length + " 件" }),
+            ]),
+            el("p", { class: "topic-desc", text: t.desc }),
+          ].concat(groups))
+        );
+      });
+      if (!results.length) {
+        ul.appendChild(el("li", { class: "empty" }, [el("p", { text: "該当する項目が見つかりませんでした。" })]));
+      }
+    }
+
+    function renderRefGroup(code, items, terms) {
+      var box = el("div", { class: "ref-group" });
+      box.appendChild(
+        el("h4", { class: "ref-head" }, [
+          el("span", { class: "badge badge-" + code, text: TYPES[code].label }),
+          el("span", { class: "topic-count", text: items.length + " 件" }),
+        ])
+      );
+      var listEl = el("ul", { class: "ref-list" });
+      function fill(n) {
+        listEl.textContent = "";
+        items.slice(0, n).forEach(function (a) {
+          var no = noLabel(a);
+          var btn = el("button", { class: "ref-link", type: "button" }, [
+            no ? el("span", { class: "ref-no", html: highlight(no, terms) }) : null,
+            el("span", { class: "ref-title", html: highlight(a.title, terms) }),
+          ]);
+          btn.addEventListener("click", function () {
+            openArticle(a);
+          });
+          listEl.appendChild(el("li", {}, [btn]));
+        });
+      }
+      fill(REF_PREVIEW);
+      box.appendChild(listEl);
+      if (items.length > REF_PREVIEW) {
+        var more = el("button", { class: "ref-more", type: "button", text: "すべて表示（" + items.length + " 件）" });
+        more.addEventListener("click", function () {
+          fill(items.length);
+          more.remove();
+        });
+        box.appendChild(more);
+      }
+      return box;
     }
 
     fillCategories();
@@ -400,7 +511,7 @@
 
   /* ---------- タブ ---------- */
 
-  var view = { tab: "dict", sub: { tsu: "kihon", nta: "ta" } };
+  var view = { tab: "dict", sub: { tsu: "kihon", nta: "ta" }, id: "" };
 
   function showView() {
     Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
@@ -429,22 +540,54 @@
     Object.keys(SUBS).forEach(function (t) {
       view.sub[t] = view.tab === t && SUBS[t].indexOf(p.get("sub")) !== -1 ? p.get("sub") : SUBS[t][0];
     });
+    view.id = p.get("id") || "";
+  }
+
+  // URL の id（例：#tab=tsu&id=tsutatsu:9-2-12）の項目を、掲載先の一覧で開く
+  function applyFocus() {
+    if (!ARTICLES.length) return;
+    var target = view.id ? HOME[(ARTICLES_BY_ID[view.id] || {}).type] : null;
+    Object.keys(HOME).forEach(function (code) {
+      var h = HOME[code];
+      var inst = INSTANCES[h.sub];
+      if (!inst) return;
+      var on = target && target.sub === h.sub && view.tab === h.tab && view.sub[h.tab] === h.sub;
+      inst.focus(on ? view.id : "");
+    });
+  }
+
+  function openArticle(a) {
+    var h = HOME[a.type];
+    view.tab = h.tab;
+    view.sub[h.tab] = h.sub;
+    view.id = a.id;
+    var p = new URLSearchParams();
+    p.set("tab", h.tab);
+    if (h.sub !== SUBS[h.tab][0]) p.set("sub", h.sub);
+    p.set("id", a.id);
+    history.pushState({ fromDict: true }, "", "#" + p.toString());
+    showView();
+    applyFocus();
+    window.scrollTo(0, 0);
   }
 
   function writeHash() {
     var p = new URLSearchParams();
     if (view.tab !== "dict") p.set("tab", view.tab);
     if (SUBS[view.tab] && view.sub[view.tab] !== SUBS[view.tab][0]) p.set("sub", view.sub[view.tab]);
+    if (view.id) p.set("id", view.id);
     var h = p.toString();
-    history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
+    history.replaceState(history.state, "", h ? "#" + h : location.pathname + location.search);
   }
 
   function setupTabs() {
     Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
       b.addEventListener("click", function () {
         view.tab = b.getAttribute("data-tab");
+        view.id = "";
         writeHash();
         showView();
+        applyFocus();
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll(".subtab"), function (b) {
@@ -453,14 +596,19 @@
         Object.keys(SUBS).forEach(function (t) {
           if (SUBS[t].indexOf(s) !== -1) view.sub[t] = s;
         });
+        view.id = "";
         writeHash();
         showView();
+        applyFocus();
       });
     });
-    window.addEventListener("hashchange", function () {
+    function onNavigate() {
       readHash();
       showView();
-    });
+      applyFocus();
+    }
+    window.addEventListener("hashchange", onNavigate);
+    window.addEventListener("popstate", onNavigate);
     readHash();
     showView();
   }
@@ -472,6 +620,7 @@
       var bodyText = blocksText(r.blocks);
       var path = r.path || [];
       return {
+        id: r.id,
         type: TYPE_OF[r.source],
         order: i,
         number: r.number,
@@ -517,6 +666,10 @@
       if (!used[k]) console.warn("bunrui.js: 該当する項目がない見出し", k);
     });
 
+    ARTICLES.forEach(function (a) {
+      ARTICLES_BY_ID[a.id] = a;
+    });
+
     var fetched = data.generated_at.slice(0, 10);
     Array.prototype.forEach.call(document.querySelectorAll(".fetched"), function (n) {
       n.textContent = fetched;
@@ -529,6 +682,7 @@
     setupDocTab("ta", { only: "ta" });
     setupDocTab("qa", { only: "qa" });
     setupDocTab("bk", { only: "bk" });
+    applyFocus();
   }
 
   setupTabs();
