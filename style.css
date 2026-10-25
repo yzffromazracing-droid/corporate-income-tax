@@ -123,7 +123,7 @@ main, .site-header > *, .site-footer {
 .chips[hidden] { display: none; }
 
 /* 辞書タブのボタンは 1 行に並べ、横にスクロールする（2 段目は「益金」「損金」の内訳） */
-#dict-type-filters, #dict-sub-filters {
+#dict-type-filters, #dict-sub-filters, #dict-topic-filters {
   flex: 1 1 100%;
   min-width: 0;
   flex-wrap: nowrap;
@@ -135,10 +135,10 @@ main, .site-header > *, .site-footer {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
-#dict-type-filters::-webkit-scrollbar, #dict-sub-filters::-webkit-scrollbar { display: none; }
-#dict-type-filters .chip, #dict-sub-filters .chip { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
-#dict-type-filters .chip:last-child, #dict-sub-filters .chip:last-child { margin-right: 24px; }
-#dict-sub-filters[hidden] { display: none; }
+#dict-type-filters::-webkit-scrollbar, #dict-sub-filters::-webkit-scrollbar, #dict-topic-filters::-webkit-scrollbar { display: none; }
+#dict-type-filters .chip, #dict-sub-filters .chip, #dict-topic-filters .chip { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+#dict-type-filters .chip:last-child, #dict-sub-filters .chip:last-child, #dict-topic-filters .chip:last-child { margin-right: 24px; }
+#dict-sub-filters[hidden], #dict-topic-filters[hidden], .select[hidden] { display: none; }
 #dict-sub-filters {
   margin-top: -2px;
   padding: 6px 0 6px 10px;
@@ -147,6 +147,14 @@ main, .site-header > *, .site-footer {
   border-radius: 0 10px 10px 0;
 }
 #dict-sub-filters .chip { font-size: 0.85rem; padding: 3px 10px; }
+/* 3 段目：選んだ内訳のテーマのタイトル一覧 */
+#dict-topic-filters {
+  margin-top: -2px;
+  margin-left: 13px;
+  padding: 2px 0 2px 10px;
+  border-left: 1px dashed var(--border);
+}
+#dict-topic-filters .chip { font-size: 0.8rem; padding: 2px 10px; }
 
 .chip {
   padding: 4px 12px;
