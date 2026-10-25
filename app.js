@@ -775,7 +775,7 @@
         ekin: ["shueki", "haito", "hyokaeki", "jyuzo"],
         sonkin: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
       },
-      topicChips: ["zeiritsu", "zeigaku", "shinkoku", "dozoku", "tsusan", "koeki", "gaikoku", "kokusai", "shueki", "haito", "hyokaeki", "jyuzo", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
+      topicChips: ["ekin", "sonkin", "zeiritsu", "zeigaku", "shinkoku", "dozoku", "tsusan", "koeki", "gaikoku", "kokusai", "shueki", "haito", "hyokaeki", "jyuzo", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
       showType: true,
     });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
