@@ -268,6 +268,7 @@
    * opts.classes  : 「すべて」の右に出す整理区分（bunrui.js）のボタンの配列（省略時はボタンを出さない）
    * opts.types    : 整理区分の右に出す種別ボタンの種別コードの配列（省略可）
    * opts.subClasses : { 親の区分: [内訳の区分, …] }。内訳は親を選んだときに 2 段目に表示する
+   * opts.topicChips : テーマの一覧をボタン（3 段目）で表示する区分の配列。この区分では分類の選択欄の代わりに使う
    * opts.only     : この種別の記事だけを扱う
    * opts.showType : 各項目に種別バッジを出す
    * opts.allLabel : 分類の選択肢の「すべて」の表記
@@ -289,6 +290,12 @@
       });
     });
     var subChips = $(prefix + "-sub-filters");
+    var topicChips = $(prefix + "-topic-filters");
+    var topicFor = {};
+    (opts.topicChips || []).forEach(function (c) {
+      topicFor[c] = true;
+    });
+    var topicType = null;
 
     function chipButton(code, label) {
       var btn = el("button", {
@@ -325,6 +332,41 @@
         subChips.appendChild(chipButton(code, code === parent ? BUNRUI[parent].label + "（全体）" : BUNRUI[code].label));
       });
       setActive(subChips, st.type);
+    }
+
+    // 3 段目：選んだ区分のテーマのタイトルを並べ、押すとそのテーマだけを表示する
+    function syncTopicChips() {
+      if (!topicChips) return;
+      var show = !!topicFor[st.type];
+      topicChips.hidden = !show;
+      select.hidden = show;
+      if (!show) {
+        topicType = null;
+        return;
+      }
+      if (topicType !== st.type) {
+        topicType = st.type;
+        topicChips.textContent = "";
+        [{ key: "", name: "すべてのテーマ" }]
+          .concat(
+            BUNRUI[st.type].topics.map(function (t) {
+              return { key: "topic|" + t.name, name: t.name };
+            })
+          )
+          .forEach(function (t) {
+            var btn = el("button", { class: "chip", type: "button", "data-type": t.key, "aria-pressed": "false", text: t.name });
+            btn.addEventListener("click", function () {
+              st.category = t.key;
+              select.value = t.key;
+              if (st.focus) clearFocus();
+              renderList(true);
+              if (btn.scrollIntoView) btn.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+            });
+            topicChips.appendChild(btn);
+          });
+        topicChips.scrollLeft = 0;
+      }
+      setActive(topicChips, st.category);
     }
 
     function choose(code) {
@@ -415,6 +457,7 @@
       if (resetLimit) st.limit = PAGE_SIZE;
       // 分類の値は「種別|分類」（種別をまたいで同名の分類があるため）、益金・損金などのテーマは「topic|テーマ」
       var cls = BUNRUI[st.type] ? st.type : "";
+      syncTopicChips();
       if (st.focus) return renderFocus();
       var sep = st.category.indexOf("|");
       var isTopic = st.category.indexOf("topic|") === 0;
@@ -732,6 +775,7 @@
         ekin: ["shueki", "haito", "hyokaeki", "jyuzo"],
         sonkin: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
       },
+      topicChips: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
       showType: true,
     });
     setupDocTab("kihon", { only: "tsu", allLabel: "すべての章" });
