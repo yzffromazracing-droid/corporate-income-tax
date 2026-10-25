@@ -27,6 +27,8 @@
 
   var ARTICLES = [];
   var ARTICLES_BY_ID = {};
+  var YOMI_R = []; // 読み（ひらがな、読みの順）
+  var YOMI_S = []; // 同じ位置の読みを持つ表記の配列
 
   function $(id) {
     return document.getElementById(id);
@@ -61,6 +63,8 @@
       .replace(/[‐‑‒–—―−]/g, "-");
   }
 
+  /* 検索語がひらがな・カタカナだけのときは、読み表（data/yomi.json）で読みがその語で始まる表記にも一致させる。
+   * inc は「どれかに一致すればよい語の組」の配列、terms は強調表示に使う語の一覧 */
   function parseQuery(q) {
     var inc = [];
     var exc = [];
@@ -68,10 +72,68 @@
       .split(/\s+/)
       .filter(Boolean)
       .forEach(function (t) {
-        if (t.length > 1 && t.charAt(0) === "-" && !/^-\d/.test(t)) exc.push(t.slice(1));
-        else inc.push(t);
+        if (t.length > 1 && t.charAt(0) === "-" && !/^-\d/.test(t)) {
+          yomiGroups(t.slice(1)).forEach(function (g) {
+            exc.push.apply(exc, g);
+          });
+        } else {
+          inc.push.apply(inc, yomiGroups(t));
+        }
       });
-    return { inc: inc, exc: exc };
+    var terms = [];
+    inc.forEach(function (g) {
+      terms.push.apply(terms, g);
+    });
+    return { inc: inc, exc: exc, terms: terms };
+  }
+
+  function toHiragana(s) {
+    return s.replace(/[ァ-ヶ]/g, function (c) {
+      return String.fromCharCode(c.charCodeAt(0) - 0x60);
+    });
+  }
+
+  // 読みが r で始まる表記（ほかの表記を含む長い表記は、短い表記で一致するので除く）
+  function yomiPrefix(r, exact) {
+    var lo = 0;
+    var hi = YOMI_R.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (YOMI_R[mid] < r) lo = mid + 1;
+      else hi = mid;
+    }
+    var found = [];
+    for (var i = lo; i < YOMI_R.length && YOMI_R[i].indexOf(r) === 0; i++) {
+      if (exact && YOMI_R[i] !== r) break;
+      found.push.apply(found, YOMI_S[i]);
+    }
+    found.sort(function (x, y) {
+      return x.length - y.length;
+    });
+    var kept = [];
+    found.forEach(function (w) {
+      if (kept.length >= 60) return;
+      for (var k = 0; k < kept.length; k++) if (w.indexOf(kept[k]) !== -1) return;
+      kept.push(norm(w));
+    });
+    return kept;
+  }
+
+  // 検索語 t を語の組の配列にする。読みに合う表記がなければ、読みを前後に分けてそれぞれの表記を探す
+  function yomiGroups(t) {
+    if (!YOMI_R.length || t.length < 2 || !/^[ぁ-ゖァ-ヺー]+$/.test(t)) return [[t]];
+    var h = toHiragana(t);
+    var hit = yomiPrefix(h, false);
+    if (hit.length) return [[t].concat(hit)];
+    for (var k = h.length - 1; k >= 2; k--) {
+      if (h.length - k < 2) continue;
+      var left = yomiPrefix(h.slice(0, k), true);
+      if (!left.length) continue;
+      var rest = yomiGroups(h.slice(k));
+      if (rest.length === 1 && rest[0].length === 1) continue;
+      return [left].concat(rest);
+    }
+    return [[t]];
   }
 
   function blocksText(blocks) {
@@ -104,16 +166,22 @@
       var score = 0;
       for (var i = 0; i < query.exc.length; i++) if (a.norm.indexOf(query.exc[i]) !== -1) return;
       for (var j = 0; j < query.inc.length; j++) {
-        var t = query.inc[j];
-        if (a.norm.indexOf(t) === -1) return;
-        if (a.noNorm === t) score += 1000;
-        else if (a.noNorm.indexOf(t) === 0) score += 200;
-        if (a.titleNorm.indexOf(t) !== -1) score += 50;
-        if (a.pathNorm.indexOf(t) !== -1) score += 10;
-        var p = -1;
-        var c = 0;
-        while ((p = a.bodyNorm.indexOf(t, p + 1)) !== -1 && c < 20) c++;
-        score += c;
+        // 組のうち一致する語のうち、いちばん高い点を採る
+        var best = -1;
+        query.inc[j].forEach(function (t) {
+          if (a.norm.indexOf(t) === -1) return;
+          var sc = 0;
+          if (a.noNorm === t) sc += 1000;
+          else if (a.noNorm.indexOf(t) === 0) sc += 200;
+          if (a.titleNorm.indexOf(t) !== -1) sc += 50;
+          if (a.pathNorm.indexOf(t) !== -1) sc += 10;
+          var p = -1;
+          var c = 0;
+          while ((p = a.bodyNorm.indexOf(t, p + 1)) !== -1 && c < 20) c++;
+          if (sc + c > best) best = sc + c;
+        });
+        if (best < 0) return;
+        score += best;
       }
       out.push({ a: a, score: score });
     });
@@ -467,7 +535,7 @@
         cls: cls,
         topic: isTopic ? st.category.slice(6) : "",
       });
-      var terms = parseQuery(st.q).inc;
+      var terms = parseQuery(st.q).terms;
       var ul = $(prefix + "-results");
       ul.textContent = "";
       $(prefix + "-count").textContent =
@@ -787,12 +855,29 @@
   }
 
   setupTabs();
-  fetch("data/hojin.json")
-    .then(function (res) {
+  function getJSON(url) {
+    return fetch(url).then(function (res) {
       if (!res.ok) throw new Error(res.status);
       return res.json();
+    });
+  }
+
+  // 読み表がなくても、読み仮名による検索ができないだけで辞書は使える
+  var yomiLoaded = getJSON("data/yomi.json")
+    .then(function (rows) {
+      rows.forEach(function (row) {
+        YOMI_R.push(row[0]);
+        YOMI_S.push(row[1].split("|"));
+      });
     })
-    .then(init)
+    .catch(function () {
+      console.warn("data/yomi.json を読み込めませんでした（読み仮名による検索は使えません）");
+    });
+
+  Promise.all([getJSON("data/hojin.json"), yomiLoaded])
+    .then(function (res) {
+      init(res[0]);
+    })
     .catch(function () {
       $("dict-count").textContent =
         "data/hojin.json を読み込めませんでした。scripts/fetch_nta.py でデータを生成し、HTTP サーバー経由で開いてください。";
