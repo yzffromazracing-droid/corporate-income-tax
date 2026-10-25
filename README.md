@@ -18,6 +18,7 @@
 
 - `scripts/fetch_nta.py` … 取得スクリプト（Python 3.9+ 標準ライブラリのみ）。目次ページから各ページを巡回し、本文を抽出して `data/hojin.json` を出力します。
 - `data/hojin.json` … 検索用データ
+- `scripts/build_yomi.py` / `data/yomi.json` … 読み仮名検索用の読み表。`data/hojin.json` に出てくる漢字・カタカナの語に、IPADIC（mecab-ipadic）の辞書の読みを付けたもの（IPADIC の利用条件は `data/yomi-ipadic-COPYING.txt`）
 - `index.html` / `app.js` / `style.css` … 検索アプリ（ビルド不要）
 - `bunrui.js` … 辞書タブの「益金」「損金」の整理表と説明文
 
@@ -28,6 +29,11 @@
 python3 scripts/fetch_nta.py
 python3 scripts/fetch_nta.py --refresh      # キャッシュを捨てて最新を取得
 python3 scripts/fetch_nta.py --only sochiho  # 出典を限定（tsutatsu / sochiho / shitsugi / bunsho / taxanswer）
+
+# 読み表の作り直し（data/hojin.json を更新したとき。IPADIC は別に取得する）
+git clone --depth 1 --filter=blob:none --sparse https://github.com/taku910/mecab.git /tmp/mecab
+(cd /tmp/mecab && git sparse-checkout set mecab-ipadic)
+python3 scripts/build_yomi.py --ipadic /tmp/mecab/mecab-ipadic
 
 # アプリ起動（fetch で JSON を読むため HTTP サーバー経由で開く）
 python3 -m http.server 8000
@@ -79,6 +85,7 @@ GitHub Pages などの静的ホスティングにそのまま置くこともで�
 - スペース区切りで AND 検索（例: `交際費 飲食`）
 - 先頭に `-` を付けた語を除外（例: `寄附金 -国外`）
 - 全角／半角・大文字／小文字は区別しません。通達番号は `9-2-12` でも `９－２－１２` でも検索できます
+- ひらがな・カタカナだけの語は読み仮名でも検索します（例: `こうさいひ` → 交際費、`かしだおれ` → 貸倒れ、`しょうきゃく` → 償却）。読みがその語で始まる語に一致するので、`げんかしょう` のような途中までの読みでも探せます。長い語は読みを区切って探します（例: `しょうがくげんかしょうきゃくしさん`）。読みは辞書から機械的に付けたもので、同じ読みの別の語（例: 償却・消却）にも一致することがあります
 
 ## データの扱い
 
