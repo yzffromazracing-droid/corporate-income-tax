@@ -72,6 +72,9 @@ main, .site-header > *, .site-footer {
   font-size: 1.25rem;
 }
 
+/* 検索欄はタイトルの下（タブの上）に置く */
+.search-slot { padding-top: 8px; padding-bottom: 4px; }
+
 .tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 

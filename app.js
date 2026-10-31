@@ -689,6 +689,11 @@
         $("sub-" + s).hidden = !active;
       });
     });
+    // 検索欄はタイトルの下に並べてあり、開いているタブ（下位タブ）のものだけを表示する
+    var current = view.tab === "dict" ? "dict" : view.sub[view.tab];
+    Array.prototype.forEach.call(document.querySelectorAll(".search-slot .search-box"), function (box) {
+      box.hidden = box.getAttribute("data-for") !== current;
+    });
   }
 
   // タブは URL（#tab=tsu&sub=so、#tab=nta&sub=qa）でも開ける
