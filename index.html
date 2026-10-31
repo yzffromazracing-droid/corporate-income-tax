@@ -10,6 +10,26 @@
 <body>
   <header class="site-header">
     <h1>法人税区分辞書</h1>
+    <div class="search-slot">
+      <div class="search-box" data-for="dict">
+        <input id="dict-q" type="search" placeholder="例：交際費、こうさいひ、9-2-12、貸倒損失" autocomplete="off" autofocus aria-label="キーワードで検索">
+      </div>
+      <div class="search-box" data-for="kihon" hidden>
+        <input id="kihon-q" type="search" placeholder="例：9-2-12、定期同額給与、少額の減価償却資産" autocomplete="off" aria-label="法人税基本通達を検索">
+      </div>
+      <div class="search-box" data-for="so" hidden>
+        <input id="so-q" type="search" placeholder="例：61の4(1)-15の2、交際費、中小企業者、賃上げ" autocomplete="off" aria-label="措置法通達を検索">
+      </div>
+      <div class="search-box" data-for="ta" hidden>
+        <input id="ta-q" type="search" placeholder="例：5200、交際費、欠損金、賃上げ" autocomplete="off" aria-label="タックスアンサーを検索">
+      </div>
+      <div class="search-box" data-for="qa" hidden>
+        <input id="qa-q" type="search" placeholder="例：寄附金、子会社支援、組織再編成、収益事業" autocomplete="off" aria-label="質疑応答事例を検索">
+      </div>
+      <div class="search-box" data-for="bk" hidden>
+        <input id="bk-q" type="search" placeholder="例：債権放棄、組織再編成、東京国税局、令和7年" autocomplete="off" aria-label="文書回答事例を検索">
+      </div>
+    </div>
     <nav class="tabs" role="tablist">
       <button class="tab is-active" role="tab" data-tab="dict" aria-selected="true">辞書</button>
       <button class="tab" role="tab" data-tab="tsu" aria-selected="false">通達</button>
@@ -20,9 +40,6 @@
   <main>
     <!-- 辞書（3 出典の横断検索） -->
     <section id="tab-dict" class="panel" role="tabpanel">
-      <div class="search-box">
-        <input id="dict-q" type="search" placeholder="例：交際費、こうさいひ、9-2-12、貸倒損失" autocomplete="off" autofocus aria-label="キーワードで検索">
-      </div>
       <div class="filters">
         <div id="dict-type-filters" class="chips" aria-label="区分で絞り込み"></div>
         <div id="dict-sub-filters" class="chips sub-chips" aria-label="益金・損金の内訳で絞り込み" hidden></div>
@@ -42,9 +59,6 @@
       </nav>
 
       <div id="sub-kihon" class="subpanel" role="tabpanel">
-        <div class="search-box">
-          <input id="kihon-q" type="search" placeholder="例：9-2-12、定期同額給与、少額の減価償却資産" autocomplete="off" aria-label="法人税基本通達を検索">
-        </div>
         <div class="filters">
           <select id="kihon-category-filter" class="select" aria-label="章で絞り込み"></select>
         </div>
@@ -54,9 +68,6 @@
       </div>
 
       <div id="sub-so" class="subpanel" role="tabpanel" hidden>
-        <div class="search-box">
-          <input id="so-q" type="search" placeholder="例：61の4(1)-15の2、交際費、中小企業者、賃上げ" autocomplete="off" aria-label="措置法通達を検索">
-        </div>
         <div class="filters">
           <select id="so-category-filter" class="select" aria-label="章で絞り込み"></select>
         </div>
@@ -75,9 +86,6 @@
       </nav>
 
       <div id="sub-ta" class="subpanel" role="tabpanel">
-        <div class="search-box">
-          <input id="ta-q" type="search" placeholder="例：5200、交際費、欠損金、賃上げ" autocomplete="off" aria-label="タックスアンサーを検索">
-        </div>
         <div class="filters">
           <select id="ta-category-filter" class="select" aria-label="分類で絞り込み"></select>
         </div>
@@ -87,9 +95,6 @@
       </div>
 
       <div id="sub-qa" class="subpanel" role="tabpanel" hidden>
-        <div class="search-box">
-          <input id="qa-q" type="search" placeholder="例：寄附金、子会社支援、組織再編成、収益事業" autocomplete="off" aria-label="質疑応答事例を検索">
-        </div>
         <div class="filters">
           <select id="qa-category-filter" class="select" aria-label="分類で絞り込み"></select>
         </div>
@@ -99,9 +104,6 @@
       </div>
 
       <div id="sub-bk" class="subpanel" role="tabpanel" hidden>
-        <div class="search-box">
-          <input id="bk-q" type="search" placeholder="例：債権放棄、組織再編成、東京国税局、令和7年" autocomplete="off" aria-label="文書回答事例を検索">
-        </div>
         <div class="filters">
           <select id="bk-category-filter" class="select" aria-label="分類で絞り込み"></select>
         </div>
