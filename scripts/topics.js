@@ -16,6 +16,13 @@ var TYPE_OF = { tsutatsu: "tsu", sochiho: "so", taxanswer: "ta", shitsugi: "qa",
 var SOURCE_LABEL = { tsutatsu: "法人税基本通達", sochiho: "措置法通達", taxanswer: "タックスアンサー", shitsugi: "質疑応答事例", bunsho: "文書回答事例" };
 // 投稿に載せる関連項目の出典の順（読みやすいタックスアンサー・基本通達を先に）
 var SOURCE_ORDER = ["taxanswer", "tsutatsu", "sochiho", "shitsugi", "bunsho"];
+// 欠番（題名か本文が「削除」だけのもの）
+function isDeleted(r) {
+  if (r.title.trim() === "削除") return true;
+  var first = (r.blocks[0] || [])[1];
+  return r.blocks.length === 1 && typeof first === "string" && /^削除[（(]/.test(first.trim());
+}
+
 // 内訳の区分の親（益金・損金）。投稿では「損金／交際費等」のように表示する
 var PARENT = {
   shueki: "ekin", haito: "ekin", hyokaeki: "ekin", jyuzo: "ekin",
@@ -68,7 +75,10 @@ function loadTopics() {
   var queues = Object.keys(BUNRUI).map(function (cls) {
     return BUNRUI[cls].topics.map(function (t) {
       var parent = PARENT[cls];
-      var items = (byTopic[cls + "|" + t.name] || []).slice().sort(function (a, b) {
+      // 「削除」とだけ書かれた欠番の通達は紹介しない
+      var items = (byTopic[cls + "|" + t.name] || []).filter(function (r) {
+        return !isDeleted(r);
+      }).sort(function (a, b) {
         return SOURCE_ORDER.indexOf(a.source) - SOURCE_ORDER.indexOf(b.source);
       });
       return {
@@ -109,7 +119,7 @@ function stripHistory(s) {
 
 function paragraphs(r) {
   return r.blocks.map(function (b) {
-    if (b[0] === "h") return { h: b[2] };
+    if (b[0] === "h") return { h: b[2], level: b[1] };
     if (b[0] === "p" || b[0] === "li") return { p: stripHistory(b[b.length - 1]).replace(/\s+/g, " ") };
     return null;
   }).filter(Boolean);
@@ -123,17 +133,19 @@ function clip(s, max) {
   return end >= max * 0.5 ? cut.slice(0, end + 1) : cut + "…";
 }
 
-// 見出し name の後の段落をつなげる（name がなければ最初から）
+// 見出し name の後の段落をつなげる（name がなければ最初から）。
+// 次の大見出し（レベル 2）で止め、途中の小見出しは【見出し】として残す
 function textAfter(paras, name, max) {
   var on = !name;
   var out = "";
   for (var i = 0; i < paras.length && out.length < max; i++) {
     if (paras[i].h !== undefined) {
-      if (on && name) break;
+      if (on && name && paras[i].level <= 2) break;
       if (paras[i].h === name) on = true;
+      else if (on) out += (out ? "\n" : "") + "【" + paras[i].h + "】";
       continue;
     }
-    if (on && paras[i].p) out += (out ? " " : "") + paras[i].p;
+    if (on && paras[i].p) out += (out ? "\n" : "") + paras[i].p;
   }
   return out;
 }

@@ -111,7 +111,17 @@ function buildSvg(topic, featured) {
     dy += 14;
     var exLines = Math.max(2, Math.floor((900 - dy) / 44));
     out.push('<rect x="96" y="' + (dy - 34) + '" width="6" height="' + (exLines * 44 - 6) + '" rx="3" fill="' + c.soft + '"/>');
-    wrap(topics.excerpt(featured, 200).replace(/\n/g, " "), 27, exLines).forEach(function (line, i) {
+    // 段落（【照会】【回答】や小見出し）ごとに行を改める。入りきらない分は最後の行を「…」で切る
+    var exText = [];
+    topics.excerpt(featured, 200).split("\n").forEach(function (para) {
+      var room = exLines - exText.length;
+      if (room <= 0) {
+        exText[exLines - 1] = exText[exLines - 1].replace(/…?$/, "…");
+        return;
+      }
+      exText = exText.concat(wrap(para, 27, room));
+    });
+    exText.slice(0, exLines).forEach(function (line, i) {
       out.push('<text x="124" y="' + (dy + i * 44) + '" font-size="31" fill="#374151">' + esc(line) + "</text>");
     });
   } else {
