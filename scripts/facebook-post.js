@@ -68,7 +68,9 @@ function buildMessage(topic, siteUrl, featured) {
     lines.push("");
     lines.push("〔原文の抜粋〕");
     lines.push(topics.excerpt(featured, EXCERPT_CHARS));
-    lines.push("▶ 原文：" + featured.url);
+    lines.push("");
+    lines.push("🔗 国税庁ホームページの原文はこちら");
+    lines.push(featured.url);
   }
   var others = topic.items.filter(function (r) { return r !== featured; });
   if (others.length) {
