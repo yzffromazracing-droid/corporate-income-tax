@@ -90,10 +90,71 @@ function loadTopics() {
   return out;
 }
 
+// 出典の種類の説明（投稿で「今日の通達・記事」に添える）
+var SOURCE_ABOUT = {
+  tsutatsu: "国税庁が法人税法などの解釈や取扱いを示したもの",
+  sochiho: "国税庁が租税特別措置法（法人税関係）の解釈や取扱いを示したもの",
+  taxanswer: "国税庁がよくある質問について税の仕組みを説明したもの",
+  shitsugi: "国税庁に寄せられた照会とその回答の事例",
+  bunsho: "事前照会に対して国税局などが文書で回答した事例",
+};
+
+// 本文の抜粋に使う出典（文書回答事例は表の形なので使わない）
+var EXCERPT_SOURCES = ["taxanswer", "tsutatsu", "sochiho", "shitsugi"];
+
+// 通達の末尾の改正経過「（平19年課法2－3「二十二」により追加、…により改正）」を除く
+function stripHistory(s) {
+  return s.replace(/[（(][^（）()]*?(?:により追加|により改正|により削除)[^（）()]*?[）)]/g, "").trim();
+}
+
+function paragraphs(r) {
+  return r.blocks.map(function (b) {
+    if (b[0] === "h") return { h: b[2] };
+    if (b[0] === "p" || b[0] === "li") return { p: stripHistory(b[b.length - 1]).replace(/\s+/g, " ") };
+    return null;
+  }).filter(Boolean);
+}
+
+// max 文字までで、なるべく文の終わり（。）で切る
+function clip(s, max) {
+  if (s.length <= max) return s;
+  var cut = s.slice(0, max);
+  var end = cut.lastIndexOf("。");
+  return end >= max * 0.5 ? cut.slice(0, end + 1) : cut + "…";
+}
+
+// 見出し name の後の段落をつなげる（name がなければ最初から）
+function textAfter(paras, name, max) {
+  var on = !name;
+  var out = "";
+  for (var i = 0; i < paras.length && out.length < max; i++) {
+    if (paras[i].h !== undefined) {
+      if (on && name) break;
+      if (paras[i].h === name) on = true;
+      continue;
+    }
+    if (on && paras[i].p) out += (out ? " " : "") + paras[i].p;
+  }
+  return out;
+}
+
+// 原文の抜粋（国税庁の本文をそのまま使い、言い換えはしない）
+function excerpt(r, max) {
+  max = max || 260;
+  var paras = paragraphs(r);
+  if (r.source === "taxanswer") return clip(textAfter(paras, "概要", max * 2) || textAfter(paras, "", max * 2), max);
+  if (r.source === "shitsugi") {
+    var q = textAfter(paras, "照会要旨", max);
+    var a = textAfter(paras, "回答要旨", max);
+    return "【照会】" + clip(q, Math.floor(max * 0.45)) + "\n【回答】" + clip(a, Math.floor(max * 0.55));
+  }
+  return clip(textAfter(paras, "", max * 2), max);
+}
+
 // 「タックスアンサー No.5265 交際費等の範囲と損金不算入額の計算」のような表記
 function itemLabel(r) {
   var num = r.number ? (r.source === "taxanswer" ? "No." + r.number : r.number) + " " : "";
   return SOURCE_LABEL[r.source] + " " + num + r.title;
 }
 
-module.exports = { loadTopics: loadTopics, itemLabel: itemLabel };
+module.exports = { loadTopics: loadTopics, itemLabel: itemLabel, excerpt: excerpt, SOURCE_LABEL: SOURCE_LABEL, SOURCE_ABOUT: SOURCE_ABOUT, EXCERPT_SOURCES: EXCERPT_SOURCES };

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /*
  * Facebook投稿に添えるカード（1080×1080）をSVGで作り、PNGに変換する。
- * その日のテーマ名・区分・説明文（冒頭）・関連する通達・記事の件数を載せる。
+ * その日のテーマ名・区分と、今日紹介する通達・記事（題名と原文の抜粋）を載せる。
+ * 紹介する通達・記事がない日は、テーマの説明文の冒頭を載せる。
  *
  *   node scripts/facebook-image.js <出力.png|出力.svg> [--date=YYYY-MM-DD]
  *
@@ -12,6 +13,7 @@
 
 var fs = require("fs");
 var childProcess = require("child_process");
+var topics = require("./topics.js");
 
 var SIZE = 1080;
 var FONT = "'Noto Sans CJK JP', 'Noto Sans JP', 'WenQuanYi Zen Hei', sans-serif";
@@ -72,7 +74,7 @@ function wrap(s, max, maxLines) {
   return lines;
 }
 
-function buildSvg(topic) {
+function buildSvg(topic, featured) {
   var c = PALETTE[GROUP_COLOR[topic.group] || "blue"];
   var out = [];
   out.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + SIZE + '" height="' + SIZE + '" viewBox="0 0 ' + SIZE + " " + SIZE + '" font-family="' + FONT + '">');
@@ -96,13 +98,28 @@ function buildSvg(topic) {
     y += nameSize + 18;
   });
 
-  // 説明文の冒頭（区切り線から下の、件数の表示の手前まで）
+  // 区切り線から下：今日の通達・記事（題名と原文の抜粋）。ない日はテーマの説明文の冒頭
   var dy = y + 30;
   out.push('<rect x="96" y="' + (dy - 50) + '" width="888" height="2" fill="' + c.soft + '"/>');
-  var maxLines = Math.max(3, Math.floor((880 - dy) / 52));
-  wrap(topic.desc, 24, maxLines).forEach(function (line, i) {
-    out.push('<text x="96" y="' + (dy + i * 52) + '" font-size="36" fill="#374151">' + esc(line) + "</text>");
-  });
+  if (featured) {
+    out.push('<text x="96" y="' + dy + '" font-size="30" font-weight="700" fill="' + c.main + '">今日の通達・記事</text>');
+    dy += 54;
+    wrap(topics.itemLabel(featured), 22, 2).forEach(function (line) {
+      out.push('<text x="96" y="' + dy + '" font-size="38" font-weight="700" fill="#1f2937">' + esc(line) + "</text>");
+      dy += 50;
+    });
+    dy += 14;
+    var exLines = Math.max(2, Math.floor((900 - dy) / 44));
+    out.push('<rect x="96" y="' + (dy - 34) + '" width="6" height="' + (exLines * 44 - 6) + '" rx="3" fill="' + c.soft + '"/>');
+    wrap(topics.excerpt(featured, 200).replace(/\n/g, " "), 27, exLines).forEach(function (line, i) {
+      out.push('<text x="124" y="' + (dy + i * 44) + '" font-size="31" fill="#374151">' + esc(line) + "</text>");
+    });
+  } else {
+    var maxLines = Math.max(3, Math.floor((880 - dy) / 52));
+    wrap(topic.desc, 24, maxLines).forEach(function (line, i) {
+      out.push('<text x="96" y="' + (dy + i * 52) + '" font-size="36" fill="#374151">' + esc(line) + "</text>");
+    });
+  }
 
   // 関連する通達・記事の件数
   if (topic.items.length) {
@@ -135,8 +152,9 @@ function main() {
     process.exit(2);
   }
   var date = dateArg ? new Date(dateArg.slice(7) + "T12:00:00+09:00") : new Date();
-  var topic = post.pickTopic(date);
-  var svg = buildSvg(topic);
+  var list = topics.loadTopics();
+  var topic = post.pickTopic(date, list);
+  var svg = buildSvg(topic, post.pickFeatured(date, topic, list));
   if (/\.svg$/.test(outFile)) fs.writeFileSync(outFile, svg);
   else renderPng(svg, outFile);
   console.log(outFile + " (" + topic.label + "／" + topic.name + ")");

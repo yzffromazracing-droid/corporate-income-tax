@@ -11,7 +11,9 @@
  *   FB_GRAPH_VERSION     : Graph APIのバージョン（任意。既定 v23.0）
  *
  * テーマは日付（日本時間）から決まるので、テーマの数（約185）の日数で全テーマを一巡する。
- * 本文はテーマの説明文（bunrui.js）と関連する通達・記事の題名で、新しく文章を作ることはしない。
+ * 毎回、テーマの関連項目から通達・記事を 1 件選んで「今日の通達・記事」として紹介する
+ * （一巡するたびに次の項目に替わる）。本文はテーマの説明文（bunrui.js）と、
+ * 国税庁の原文の抜粋・題名で、新しく文章を作ったり言い換えたりはしない。
  * --image を指定し、そのファイルがあれば写真付きで投稿する（本文は写真の説明文になる）。
  * --dry-run またはトークン未設定のときは投稿せず本文を表示するだけ。
  * 投稿とトークンの確認の処理は、消費税区分辞書の scripts/facebook-post.js と同じ。
@@ -24,7 +26,8 @@ var topics = require("./topics.js");
 
 var DAY_MS = 24 * 60 * 60 * 1000;
 var JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-var ITEMS_IN_POST = 4; // 本文に載せる関連項目の数
+var OTHER_ITEMS = 3; // 「ほかの関連する通達・記事」に載せる数
+var EXCERPT_CHARS = 300; // 原文の抜粋の長さ（文字数の目安）
 
 // 日本時間の日付を 1970-01-01 からの日数にする
 function dayIndex(date) {
@@ -37,21 +40,41 @@ function pickTopic(date, list) {
   return list[(n + list.length) % list.length];
 }
 
+// 今日紹介する通達・記事。一巡するたびに、テーマの関連項目（抜粋できるもの）の次の 1 件にする
+function pickFeatured(date, topic, list) {
+  list = list || topics.loadTopics();
+  var cands = topic.items.filter(function (r) { return topics.EXCERPT_SOURCES.indexOf(r.source) !== -1; });
+  if (!cands.length) return null;
+  var round = Math.floor(dayIndex(date) / list.length);
+  return cands[((round % cands.length) + cands.length) % cands.length];
+}
+
 function hashtag(s) {
   return "#" + s.replace(/[\s・（）()／/、%％「」]/g, "");
 }
 
-function buildMessage(topic, siteUrl) {
+function buildMessage(topic, siteUrl, featured) {
   var lines = [];
   lines.push("【今日の法人税】" + topic.name);
   lines.push("");
   lines.push("▶ 区分：" + topic.label);
   lines.push("");
   lines.push(topic.desc);
-  if (topic.items.length) {
+  if (featured) {
     lines.push("");
-    lines.push("■ 関連する通達・記事" + (topic.items.length > ITEMS_IN_POST ? "（全" + topic.items.length + "件から抜粋）" : ""));
-    topic.items.slice(0, ITEMS_IN_POST).forEach(function (r) {
+    lines.push("📘 今日の通達・記事");
+    lines.push(topics.itemLabel(featured));
+    lines.push("（" + topics.SOURCE_LABEL[featured.source] + "は、" + topics.SOURCE_ABOUT[featured.source] + "です）");
+    lines.push("");
+    lines.push("〔原文の抜粋〕");
+    lines.push(topics.excerpt(featured, EXCERPT_CHARS));
+    lines.push("▶ 原文：" + featured.url);
+  }
+  var others = topic.items.filter(function (r) { return r !== featured; });
+  if (others.length) {
+    lines.push("");
+    lines.push("■ " + (featured ? "ほかの" : "") + "関連する通達・記事" + (others.length > OTHER_ITEMS ? "（全" + topic.items.length + "件から）" : ""));
+    others.slice(0, OTHER_ITEMS).forEach(function (r) {
       lines.push("・" + topics.itemLabel(r));
     });
   }
@@ -61,7 +84,7 @@ function buildMessage(topic, siteUrl) {
     lines.push(siteUrl);
   }
   lines.push("");
-  lines.push("※ 説明文は辞書による概要です。実際の適用は国税庁の原文でご確認ください。");
+  lines.push("※ テーマの説明は辞書による概要、抜粋は国税庁ホームページの原文です（取得時点のもの）。実際の適用は必ず原文でご確認ください。");
   lines.push("");
   var tags = ["#法人税"].concat(topic.label.split("／").map(hashtag), ["#経理", "#税務"]);
   lines.push(tags.filter(function (t, i) { return tags.indexOf(t) === i; }).join(" "));
@@ -143,8 +166,10 @@ async function main() {
   }
 
   var siteUrl = process.env.SITE_URL || "";
-  var topic = pickTopic(date);
-  var message = buildMessage(topic, siteUrl);
+  var list = topics.loadTopics();
+  var topic = pickTopic(date, list);
+  var featured = pickFeatured(date, topic, list);
+  var message = buildMessage(topic, siteUrl, featured);
 
   var pageId = process.env.FB_PAGE_ID;
   var token = process.env.FB_PAGE_ACCESS_TOKEN;
@@ -166,4 +191,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { dayIndex: dayIndex, pickTopic: pickTopic, buildMessage: buildMessage, post: post };
+module.exports = { dayIndex: dayIndex, pickTopic: pickTopic, pickFeatured: pickFeatured, buildMessage: buildMessage, post: post };
