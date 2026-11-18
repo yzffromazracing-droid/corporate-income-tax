@@ -162,9 +162,13 @@ function main() {
     process.exit(2);
   }
   var date = dateArg ? new Date(dateArg.slice(7) + "T12:00:00+09:00") : new Date();
-  var list = topics.loadTopics();
-  var topic = post.pickTopic(date, list);
-  var svg = buildSvg(topic, post.pickFeatured(date, topic, list));
+  var picked = post.pickForDate(date);
+  if (!picked) {
+    console.log(post.jstDate(date) + " は投稿しない日のため画像を作りません。");
+    return;
+  }
+  var topic = picked.topic;
+  var svg = buildSvg(topic, picked.featured);
   if (/\.svg$/.test(outFile)) fs.writeFileSync(outFile, svg);
   else renderPng(svg, outFile);
   console.log(outFile + " (" + topic.label + "／" + topic.name + ")");

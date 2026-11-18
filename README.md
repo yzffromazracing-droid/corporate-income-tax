@@ -24,7 +24,7 @@
 - `scripts/diff_hojin.py` … 2 つの `data/hojin.json` を比べ、追加・削除・内容が変わった項目を一覧にする（更新の有無の判定に使う）
 - `scripts/check_bunrui.js` … `bunrui.js` の整理表が `data/hojin.json` の項目に当たっているかを確かめ、テーマごとの件数と当たらない規則を表示する
 - `scripts/build_artifact.py` … Claude の Artifact で公開するファイル一式を作る
-- `scripts/facebook-post.js` / `scripts/facebook-image.js` / `scripts/topics.js` / `.github/workflows/facebook-daily.yml` … 辞書のテーマを毎日 1 件 Facebook ページに投稿する（下記）
+- `scripts/facebook-post.js` / `scripts/facebook-image.js` / `scripts/facebook-preview.js` / `scripts/topics.js` / `.github/workflows/facebook-daily.yml` … 辞書のテーマを毎日 1 件 Facebook ページに投稿する（下記）
 
 ## 使い方
 
@@ -119,7 +119,19 @@ GitHub Actions（`.github/workflows/facebook-daily.yml`）が毎日 13:47（日�
    - Variables（任意）：`SITE_URL`（未設定なら `https://yzffromazracing-droid.github.io/corporate-income-tax/`）
 2. Actions タブの「Facebook daily post」→「Run workflow」で `dry_run` にチェックして本文と画像（実行結果の Artifacts の `card`）を確認し、その後チェックなしで実行して投稿を確認する。
 
-手元での確認：`node scripts/facebook-post.js --dry-run --date=2026-11-19`、`node scripts/facebook-image.js card.svg --date=2026-11-19`（SVG ならブラウザで開ける）
+手元での確認：`node scripts/facebook-post.js --dry-run --date=2026-11-19`、`node scripts/facebook-image.js card.svg --date=2026-11-19`（SVG ならブラウザで開ける）。`node scripts/facebook-preview.js 出力先` で翌日の本文（post.txt）とカード画像（card.png）をまとめて作れる（Playwright が必要）。毎日 17:47 ごろ、Claude Code の定期実行で翌日分をこの方法で作って事前確認に回している。
+
+日付ごとの指定：リポジトリ直下の `facebook-overrides.json`（任意）で、その日の投稿を止めたり、テーマや紹介する通達・記事を差し替えたりできる（`main` に入れると反映される）。
+
+```json
+{
+  "2026-11-20": "skip",
+  "2026-11-21": "交際費等の意義と範囲",
+  "2026-11-22": { "topic": "交際費等の意義と範囲", "featured": "taxanswer:5265" }
+}
+```
+
+`"skip"` はその日は投稿しない、文字列はテーマ名で差し替え、`featured` は紹介する通達・記事の ID（そのテーマの関連項目にあるもの）。
 
 ## データの扱い
 

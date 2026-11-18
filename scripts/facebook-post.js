@@ -16,6 +16,10 @@
  * 国税庁の原文の抜粋・題名で、新しく文章を作ったり言い換えたりはしない。
  * --image を指定し、そのファイルがあれば写真付きで投稿する（本文は写真の説明文になる）。
  * --dry-run またはトークン未設定のときは投稿せず本文を表示するだけ。
+ * facebook-overrides.json（任意）で日付ごとに投稿を止めたり、テーマ・通達を差し替えたりできる：
+ *   { "2026-11-20": "skip",                       … その日は投稿しない
+ *     "2026-11-21": "交際費等の範囲",              … テーマを差し替える（テーマ名）
+ *     "2026-11-22": { "topic": "交際費等の範囲", "featured": "tsutatsu:9-2-12" } }  … 紹介する通達・記事も指定
  * 投稿とトークンの確認の処理は、消費税区分辞書の scripts/facebook-post.js と同じ。
  */
 "use strict";
@@ -38,6 +42,35 @@ function pickTopic(date, list) {
   list = list || topics.loadTopics();
   var n = dayIndex(date) % list.length;
   return list[(n + list.length) % list.length];
+}
+
+// 日本時間の日付（YYYY-MM-DD）
+function jstDate(date) {
+  return new Date(dayIndex(date) * DAY_MS).toISOString().slice(0, 10);
+}
+
+function loadOverrides() {
+  var file = path.join(__dirname, "..", "facebook-overrides.json");
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+}
+
+// その日に投稿するテーマと紹介する通達・記事。投稿しない日は null
+function pickForDate(date, list, overrides) {
+  list = list || topics.loadTopics();
+  var o = (overrides || loadOverrides())[jstDate(date)];
+  if (o === "skip") return null;
+  var spec = typeof o === "string" ? { topic: o } : o || {};
+  var topic = pickTopic(date, list);
+  if (spec.topic) {
+    topic = list.filter(function (t) { return t.name === spec.topic; })[0];
+    if (!topic) throw new Error("facebook-overrides.json のテーマが見つかりません: " + spec.topic);
+  }
+  var featured = pickFeatured(date, topic, list);
+  if (spec.featured) {
+    featured = topic.items.filter(function (r) { return r.id === spec.featured; })[0];
+    if (!featured) throw new Error("facebook-overrides.json の通達・記事がテーマの関連項目にありません: " + spec.featured);
+  }
+  return { topic: topic, featured: featured };
 }
 
 // 今日紹介する通達・記事。一巡するたびに、テーマの関連項目（抜粋できるもの）の次の 1 件にする
@@ -168,10 +201,13 @@ async function main() {
   }
 
   var siteUrl = process.env.SITE_URL || "";
-  var list = topics.loadTopics();
-  var topic = pickTopic(date, list);
-  var featured = pickFeatured(date, topic, list);
-  var message = buildMessage(topic, siteUrl, featured);
+  var picked = pickForDate(date);
+  if (!picked) {
+    console.log(jstDate(date) + " は facebook-overrides.json で投稿しない日に指定されています。");
+    return;
+  }
+  var topic = picked.topic;
+  var message = buildMessage(topic, siteUrl, picked.featured);
 
   var pageId = process.env.FB_PAGE_ID;
   var token = process.env.FB_PAGE_ACCESS_TOKEN;
@@ -193,4 +229,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { dayIndex: dayIndex, pickTopic: pickTopic, pickFeatured: pickFeatured, buildMessage: buildMessage, post: post };
+module.exports = { dayIndex: dayIndex, jstDate: jstDate, pickTopic: pickTopic, pickFeatured: pickFeatured, pickForDate: pickForDate, buildMessage: buildMessage, post: post };
