@@ -24,6 +24,7 @@
 - `scripts/diff_hojin.py` … 2 つの `data/hojin.json` を比べ、追加・削除・内容が変わった項目を一覧にする（更新の有無の判定に使う）
 - `scripts/check_bunrui.js` … `bunrui.js` の整理表が `data/hojin.json` の項目に当たっているかを確かめ、テーマごとの件数と当たらない規則を表示する
 - `scripts/build_artifact.py` … Claude の Artifact で公開するファイル一式を作る
+- `scripts/facebook-post.js` / `scripts/facebook-image.js` / `scripts/facebook-preview.js` / `scripts/topics.js` / `.github/workflows/facebook-daily.yml` … 辞書のテーマを毎日 1 件 Facebook ページに投稿する（下記）
 
 ## 使い方
 
@@ -103,6 +104,34 @@ GitHub Pages などの静的ホスティングにそのまま置くこともで�
 4. 変更があれば `scripts/build_yomi.py` で読み表を作り直し、`scripts/check_bunrui.js` で整理表が当たっているかを確かめる。番号の付け替えなどで当たらなくなった規則は、データから対応が明らかな場合だけ直す
 5. 変わったタックスアンサー等を引用している説明文（金額・率・期限など）は、新しい本文と照らして直す
 6. ブラウザで表示を確かめてから、変更点の一覧を付けたプルリクエストを作ってマージし、Artifact も更新する
+
+## Facebook への毎日の投稿
+
+GitHub Actions（`.github/workflows/facebook-daily.yml`）が毎日 13:47（日本時間）に、辞書のテーマ（益金・損金・税率などの各区分のテーマ、約 185 件）を 1 件ずつ、カード画像付きで Facebook ページへ投稿します。消費税区分辞書（毎日 8:47）と同じページに投稿するため、時刻をずらしています。テーマは日付で決まり、約 185 日で一巡します（同じ区分が続かないよう、区分を順に回して並べています）。
+
+- 本文：テーマ名・区分・説明文（`bunrui.js` の説明文そのまま）に加え、関連項目から 1 件を「今日の通達・記事」として紹介します（番号・題名、その出典がどういうものかの一言、国税庁の原文の抜粋（約 300 字。改正経過の注記は除く）、原文の URL）。ほかの関連する通達・記事の題名（最大 3 件）・辞書の URL・ハッシュタグも載せます。紹介する通達・記事は一巡するたびに次の 1 件に替わります（文書回答事例は表の形なので紹介には使いません）。原文を言い換えたり、新しく文章を作ったりはしません
+- 画像：テーマ名・区分と、今日の通達・記事の題名・原文の抜粋を載せた 1080×1080 のカード（紹介する通達・記事がない日はテーマの説明文の冒頭）。作れなかった日は文章だけで投稿します
+
+設定：
+
+1. リポジトリの Settings → Secrets and variables → Actions に、消費税区分辞書と同じ値を登録する。
+   - Secrets：`FB_PAGE_ID`（ページID）、`FB_PAGE_ACCESS_TOKEN`（`pages_manage_posts` 権限付きのページアクセストークン）
+   - Variables（任意）：`SITE_URL`（未設定なら `https://yzffromazracing-droid.github.io/corporate-income-tax/`）
+2. Actions タブの「Facebook daily post」→「Run workflow」で `dry_run` にチェックして本文と画像（実行結果の Artifacts の `card`）を確認し、その後チェックなしで実行して投稿を確認する。
+
+手元での確認：`node scripts/facebook-post.js --dry-run --date=2026-11-19`、`node scripts/facebook-image.js card.svg --date=2026-11-19`（SVG ならブラウザで開ける）。`node scripts/facebook-preview.js 出力先` で翌日の本文（post.txt）とカード画像（card.png）をまとめて作れる（Playwright が必要）。毎日 17:47 ごろ、Claude Code の定期実行で翌日分をこの方法で作って事前確認に回している。
+
+日付ごとの指定：リポジトリ直下の `facebook-overrides.json`（任意）で、その日の投稿を止めたり、テーマや紹介する通達・記事を差し替えたりできる（`main` に入れると反映される）。
+
+```json
+{
+  "2026-11-20": "skip",
+  "2026-11-21": "交際費等の意義と範囲",
+  "2026-11-22": { "topic": "交際費等の意義と範囲", "featured": "taxanswer:5265" }
+}
+```
+
+`"skip"` はその日は投稿しない、文字列はテーマ名で差し替え、`featured` は紹介する通達・記事の ID（そのテーマの関連項目にあるもの）。
 
 ## データの扱い
 

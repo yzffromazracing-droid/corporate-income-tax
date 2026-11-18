@@ -1,0 +1,43 @@
+name: Facebook daily post
+
+on:
+  schedule:
+    # 毎日 13:47 JST（4:47 UTC）。消費税区分辞書（8:47）と時間をずらし、毎時0分の混雑も避けている
+    - cron: "47 4 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "投稿せずに本文と画像だけ作る（画像は実行結果の Artifacts からダウンロード）"
+        type: boolean
+        default: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install SVG renderer and Japanese fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends librsvg2-bin fonts-noto-cjk
+      - name: Make card image
+        # 画像が作れなくても文章だけで投稿する
+        continue-on-error: true
+        run: node scripts/facebook-image.js "$RUNNER_TEMP/card.png"
+      - name: Post to Facebook page
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
+          # Variables の SITE_URL があればそちらを使う
+          SITE_URL: ${{ vars.SITE_URL || 'https://yzffromazracing-droid.github.io/corporate-income-tax/' }}
+        run: node scripts/facebook-post.js --image="$RUNNER_TEMP/card.png" ${{ inputs.dry_run && '--dry-run' || '' }}
+      - name: Upload card image
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: card
+          path: ${{ runner.temp }}/card.png
+          if-no-files-found: ignore
