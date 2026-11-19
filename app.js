@@ -337,6 +337,7 @@
    * opts.types    : 整理区分の右に出す種別ボタンの種別コードの配列（省略可）
    * opts.subClasses : { 親の区分: [内訳の区分, …] }。内訳は親を選んだときに 2 段目に表示する
    * opts.topicChips : テーマの一覧をボタン（3 段目）で表示する区分の配列。この区分では分類の選択欄の代わりに使う
+   * opts.extraChips : { 区分: [{ key, name, render(ul, q) }] }。3 段目の「すべてのテーマ」の次に置く、テーマ以外の表示（法定耐用年数の表など）
    * opts.only     : この種別の記事だけを扱う
    * opts.showType : 各項目に種別バッジを出す
    * opts.allLabel : 分類の選択肢の「すべて」の表記
@@ -416,13 +417,14 @@
         topicType = st.type;
         topicChips.textContent = "";
         [{ key: "", name: "すべてのテーマ" }]
+          .concat((opts.extraChips || {})[st.type] || [])
           .concat(
             BUNRUI[st.type].topics.map(function (t) {
               return { key: "topic|" + t.name, name: t.name };
             })
           )
           .forEach(function (t) {
-            var btn = el("button", { class: "chip", type: "button", "data-type": t.key, "aria-pressed": "false", title: t.name, text: t.name });
+            var btn = el("button", { class: "chip" + (t.render ? " chip-extra" : ""), type: "button", "data-type": t.key, "aria-pressed": "false", title: t.name, text: t.name });
             btn.addEventListener("click", function () {
               st.category = t.key;
               select.value = t.key;
@@ -503,6 +505,9 @@
           if (key === st.category) found = true;
           select.appendChild(el("option", { value: key, text: t.name }));
         });
+        ((opts.extraChips || {})[st.type] || []).forEach(function (x) {
+          if (x.key === st.category) found = true;
+        });
         if (!found) st.category = "";
         select.value = st.category;
         return;
@@ -527,6 +532,15 @@
       var cls = BUNRUI[st.type] ? st.type : "";
       syncTopicChips();
       if (st.focus) return renderFocus();
+      var extra = ((opts.extraChips || {})[st.type] || []).filter(function (x) {
+        return x.key === st.category;
+      })[0];
+      if (extra) {
+        var box = $(prefix + "-results");
+        box.textContent = "";
+        $(prefix + "-count").textContent = "";
+        return extra.render(box, st.q, $(prefix + "-count"));
+      }
       var sep = st.category.indexOf("|");
       var isTopic = st.category.indexOf("topic|") === 0;
       var results = searchArticles(list, st.q, {
@@ -665,6 +679,136 @@
 
     fillCategories();
     renderList(true);
+  }
+
+  /* ---------- 法定耐用年数（減価償却の 3 段目） ---------- */
+
+  var taiyoLoaded = null;
+
+  // 国税庁「主な減価償却資産の耐用年数表」（data/taiyo.json、scripts/fetch_taiyo.py で生成）を、
+  // 区分（建物・器具備品など）ごとの表で表示する。検索欄の語で行を絞り込む
+  function renderTaiyo(ul, q, count) {
+    if (!taiyoLoaded) {
+      taiyoLoaded = getJSON("data/taiyo.json").then(function (d) {
+        d.sections.forEach(function (s) {
+          s.rows.forEach(function (r) {
+            r.norm = norm([s.name, r.struct].concat(r.path, [r.detail]).join(" "));
+          });
+        });
+        return d;
+      });
+    }
+    var token = {};
+    ul.taiyoToken = token;
+    count.textContent = "読み込み中…";
+    taiyoLoaded.then(
+      function (d) {
+        if (ul.taiyoToken === token) drawTaiyo(ul, q, count, d);
+      },
+      function () {
+        if (ul.taiyoToken !== token) return;
+        taiyoLoaded = null;
+        count.textContent = "data/taiyo.json を読み込めませんでした。";
+      }
+    );
+  }
+
+  function drawTaiyo(ul, q, count, d) {
+    var query = parseQuery(q);
+    var link = function (href, text) {
+      return el("a", { href: href, target: "_blank", rel: "noopener", text: text });
+    };
+    ul.textContent = "";
+    ul.appendChild(
+      el("li", { class: "class-intro" }, [
+        el("h2", { class: "class-title", text: "法定耐用年数（" + d.title + "）" }),
+        el("p", {
+          class: "class-desc",
+          text:
+            "減価償却資産の耐用年数は「減価償却資産の耐用年数等に関する省令」の別表で定められています。ここでは、国税庁が別表から主なものを抜き出した「" +
+            d.title +
+            "」を、資産の区分ごとに掲載しています。",
+        }),
+        el("p", { class: "class-desc" }, [
+          link(d.source_url, "国税庁「" + d.title + "」（PDF）"),
+          document.createTextNode("　"),
+          link(d.page_url, "タックスアンサー No.2100 減価償却のあらまし"),
+          document.createTextNode("　"),
+          link(d.egov_url, "耐用年数省令の別表（e-Gov法令検索）"),
+        ]),
+        el("p", {
+          class: "class-note",
+          text:
+            "主な資産だけを掲載した表です（構築物・船舶・航空機・無形減価償却資産・生物などは載っていません）。ここにない資産や、詳しい区分は別表でご確認ください。取得日：" +
+            d.generated_at.slice(0, 10),
+        }),
+      ])
+    );
+    var total = 0;
+    var shown = 0;
+    var nav = el("li", { class: "taiyo-nav" });
+    ul.appendChild(nav);
+    d.sections.forEach(function (s, si) {
+      total += s.rows.length;
+      var rows = s.rows.filter(function (r) {
+        for (var i = 0; i < query.exc.length; i++) if (r.norm.indexOf(query.exc[i]) !== -1) return false;
+        return query.inc.every(function (g) {
+          return g.some(function (t) {
+            return r.norm.indexOf(t) !== -1;
+          });
+        });
+      });
+      if (!rows.length) return;
+      shown += rows.length;
+      var id = "taiyo-" + si;
+      var jump = el("button", { class: "chip", type: "button", text: s.name });
+      jump.addEventListener("click", function () {
+        var h = $(id);
+        if (h && h.scrollIntoView) h.scrollIntoView({ block: "start", behavior: "smooth" });
+      });
+      nav.appendChild(jump);
+      var tbody = el("tbody");
+      rows.forEach(function (r, i) {
+        var tr = el("tr");
+        if (i === 0 || rows[i - 1].struct !== r.struct) {
+          var span = 1;
+          while (i + span < rows.length && rows[i + span].struct === r.struct) span++;
+          tr.appendChild(el("th", { scope: "rowgroup", rowspan: String(span), class: "taiyo-struct", html: highlight(r.struct, query.terms) }));
+        }
+        var cell = el("td", { class: "taiyo-detail" });
+        // 細目の親子（例：電子計算機 › パーソナルコンピュータ）は字下げで示す
+        r.path.forEach(function (p, depth) {
+          cell.appendChild(el("span", { class: "taiyo-path", style: "padding-left:" + depth + "em", html: highlight(p, query.terms) }));
+        });
+        if (r.detail) cell.appendChild(el("span", { class: "taiyo-item", style: "padding-left:" + r.path.length + "em", html: highlight(r.detail, query.terms) }));
+        tr.appendChild(cell);
+        tr.appendChild(el("td", { class: "taiyo-years", text: r.years + "年" }));
+        tbody.appendChild(tr);
+      });
+      ul.appendChild(
+        el("li", { class: "topic-card taiyo-card" }, [
+          el("h3", { class: "topic-title", id: id }, [
+            el("span", { text: s.name }),
+            el("span", { class: "topic-count", text: rows.length + " 件" }),
+          ]),
+          el("div", { class: "taiyo-wrap" }, [
+            el("table", { class: "taiyo-table" }, [
+              el("thead", {}, [
+                el("tr", {}, [
+                  el("th", { scope: "col", text: s.name === "機械・装置" ? "設備の種類" : "構造・用途" }),
+                  el("th", { scope: "col", text: "細目" }),
+                  el("th", { scope: "col", text: "耐用年数" }),
+                ]),
+              ]),
+              tbody,
+            ]),
+          ]),
+        ])
+      );
+    });
+    if (!nav.children.length) nav.remove();
+    if (!shown) ul.appendChild(el("li", { class: "empty" }, [el("p", { text: "該当する資産が見つかりませんでした。" })]));
+    count.textContent = query.inc.length || query.exc.length ? shown + " 件（全 " + total + " 件）" : "全 " + total + " 件";
   }
 
   /* ---------- タブ ---------- */
@@ -848,6 +992,7 @@
         ekin: ["shueki", "haito", "hyokaeki", "jyuzo"],
         sonkin: ["shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
       },
+      extraChips: { genka: [{ key: "extra|taiyo", name: "法定耐用年数（別表）", render: renderTaiyo }] },
       topicChips: ["ekin", "sonkin", "zeiritsu", "zeigaku", "aoiro", "shinkoku", "dozoku", "tsusan", "koeki", "gaikoku", "kokusai", "setsuritsu", "haigyo", "shueki", "haito", "hyokaeki", "jyuzo", "shushi", "kurinobe", "hikiate", "kashidaore", "yakuin", "kosai", "kifu", "sozei", "hoken", "genka", "tokusho", "asshuku", "kesson", "saihen"],
       showType: true,
     });
