@@ -401,3 +401,20 @@ mark { background: #fff3a3; color: inherit; border-radius: 2px; padding: 0 1px; 
 .taiyo-item { display: block; }
 .taiyo-years { width: 5em; text-align: right; font-weight: 700; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .taiyo-table thead th:last-child { text-align: right; }
+.taiyo-picker { display: flex; gap: 6px; list-style: none; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.taiyo-picker .chip { flex-shrink: 0; }
+.taiyo-picker .chip.is-empty { opacity: 0.5; }
+.taiyo-foot { list-style: none; padding: 0 4px; }
+.bp-table td { white-space: pre-line; overflow-wrap: anywhere; }
+.bp-table .nb-t, .bp-table .nb-tb { border-top-style: none; }
+.bp-table .nb-b, .bp-table .nb-tb { border-bottom-style: none; }
+.bp-table .bp-num { text-align: right; white-space: nowrap; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.bp-table tr.is-hit td { background: var(--bg); }
+.bp-kind { color: var(--muted); font-size: 0.82rem; }
+.bp-table { table-layout: fixed; }
+.bp-skip td, .bp-sep td { padding: 2px 8px; background: var(--surface); }
+.bp-sep td { border-left-style: none; border-right-style: none; height: 10px; }
+.bp-more { border: 0; background: none; color: var(--accent); font: inherit; font-size: 0.82rem; cursor: pointer; padding: 2px 0; }
+.bp-rates td { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bp-rates td:first-child { font-weight: 700; color: var(--accent); }
+.bp-rates thead th { text-align: right; white-space: normal; }
