@@ -112,9 +112,26 @@ var SOURCE_ABOUT = {
 // 本文の抜粋に使う出典（文書回答事例は表の形なので使わない）
 var EXCERPT_SOURCES = ["taxanswer", "tsutatsu", "sochiho", "shitsugi"];
 
-// 通達の末尾の改正経過「（平19年課法2－3「二十二」により追加、…により改正）」を除く
+// 通達の末尾の改正経過「（平19年課法2－3「二十二」により追加、…により改正）」を除く。
+// 「昭45年直審（法）58」のように中に括弧を含む改正経過もあるので、末尾の括弧は対応する開き括弧まで数えて外す
 function stripHistory(s) {
-  return s.replace(/[（(][^（）()]*?(?:により追加|により改正|により削除)[^（）()]*?[）)]/g, "").trim();
+  s = s.replace(/[（(][^（）()]*?(?:により追加|により改正|により削除)[^（）()]*?[）)]/g, "").trim();
+  while (/[）)]$/.test(s)) {
+    var depth = 0;
+    var open = -1;
+    for (var i = s.length - 1; i >= 0; i--) {
+      var ch = s.charAt(i);
+      if (ch === "）" || ch === ")") depth++;
+      else if (ch === "（" || ch === "(") depth--;
+      if (depth === 0) {
+        open = i;
+        break;
+      }
+    }
+    if (open < 0 || !/により(?:追加|改正|削除)$/.test(s.slice(open + 1, -1).trim())) break;
+    s = s.slice(0, open).trim();
+  }
+  return s;
 }
 
 function paragraphs(r) {
