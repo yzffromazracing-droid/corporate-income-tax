@@ -683,19 +683,35 @@
 
   /* ---------- 法定耐用年数（減価償却の 3 段目） ---------- */
 
+  // 表の選択欄の表記（見出しには省令の正式な表名を出す）
+  var BEPPYO_SHORT = {
+    別表第一: "機械及び装置以外の有形減価償却資産",
+    別表第二: "機械及び装置",
+    別表第三: "無形減価償却資産",
+    別表第四: "生物",
+    別表第五: "公害防止用減価償却資産",
+    別表第六: "開発研究用減価償却資産",
+    別表第七: "旧定額法・旧定率法の償却率",
+    別表第八: "定額法の償却率",
+    別表第九: "定率法の償却率等（平19.4.1～平24.3.31取得）",
+    別表第十: "定率法の償却率等（平24.4.1以後取得）",
+    別表第十一: "残存割合",
+  };
   var taiyoLoaded = null;
+  var taiyoView = "main"; // "main"（国税庁の主な資産の表）または別表の番号（"別表第一" など）
 
-  // 国税庁「主な減価償却資産の耐用年数表」（data/taiyo.json、scripts/fetch_taiyo.py で生成）を、
-  // 区分（建物・器具備品など）ごとの表で表示する。検索欄の語で行を絞り込む
+  // 国税庁「主な減価償却資産の耐用年数表」（data/taiyo.json、scripts/fetch_taiyo.py）と、
+  // 耐用年数省令の別表第一～第十一（data/beppyo.json、scripts/fetch_beppyo.py）を表示する。検索欄の語で行を絞り込む
   function renderTaiyo(ul, q, count) {
     if (!taiyoLoaded) {
-      taiyoLoaded = getJSON("data/taiyo.json").then(function (d) {
-        d.sections.forEach(function (s) {
+      taiyoLoaded = Promise.all([getJSON("data/taiyo.json"), getJSON("data/beppyo.json")]).then(function (res) {
+        res[0].sections.forEach(function (s) {
           s.rows.forEach(function (r) {
             r.norm = norm([s.name, r.struct].concat(r.path, [r.detail]).join(" "));
           });
         });
-        return d;
+        res[1].tables.forEach(prepareBeppyo);
+        return { main: res[0], beppyo: res[1] };
       });
     }
     var token = {};
@@ -708,58 +724,307 @@
       function () {
         if (ul.taiyoToken !== token) return;
         taiyoLoaded = null;
-        count.textContent = "data/taiyo.json を読み込めませんでした。";
+        count.textContent = "data/taiyo.json・data/beppyo.json を読み込めませんでした。";
       }
     );
   }
 
+  // 別表の各行に、論理上の列の位置とまとまり（罫線で区切られた行の組）を付ける
+  function prepareBeppyo(t) {
+    var ncol = 0;
+    t.head[0].forEach(function (c) {
+      ncol += c.c || 1;
+    });
+    var occ = [];
+    var span = []; // 列ごとに、上から結合して続いているセル
+    for (var k = 0; k < ncol; k++) occ.push(0);
+    t.ncol = ncol;
+    var block = -1;
+    var blockEnd = 0;
+    var kind = "";
+    t.blocks = [];
+    t.rows.forEach(function (r, i) {
+      var col = 0;
+      var starts = false;
+      r.forEach(function (c) {
+        while (col < ncol && occ[col] > 0) col++;
+        c.col = col;
+        occ[col] = c.r || 1;
+        for (var m = 0; m < (c.c || 1); m++) span[col + m] = c;
+        // 左から 2 列目までのセルが上に罫線を持つか、行を結合していれば新しいまとまり
+        if (col <= 1 && (c.r > 1 || (c.nb || "").indexOf("t") === -1 || (col === 0 && c.t && i === 0))) starts = true;
+        col += c.c || 1;
+      });
+      // 絞り込み表示用：この行の各列のセル（上の行から結合して続くセルを含む）
+      r.grid = span.slice(0, ncol);
+      for (var j = 0; j < ncol; j++) occ[j] = Math.max(0, occ[j] - 1);
+      if (i >= blockEnd && (starts || block < 0)) {
+        block = t.blocks.length;
+        t.blocks.push({ rows: [], kind: "" });
+      }
+      r.forEach(function (c) {
+        if (c.r > 1) blockEnd = Math.max(blockEnd, i + c.r);
+        if (c.col === 0 && c.t) kind = c.t;
+      });
+      // 1 列目が空のまとまりは、上の 1 列目（「建物」など）を絞り込み時に添える
+      if (!t.blocks[block].rows.length) t.blocks[block].kind = kind;
+      t.blocks[block].rows.push(r);
+      r.norm = norm(
+        r
+          .map(function (c) {
+            return c.t;
+          })
+          .join(" ")
+      );
+    });
+    t.blocks.forEach(function (b) {
+      b.norm = norm(b.kind) + " " + b.rows.map(function (r) {
+        return r.norm;
+      }).join(" ");
+    });
+  }
+
+  function rowMatches(text, query) {
+    for (var i = 0; i < query.exc.length; i++) if (text.indexOf(query.exc[i]) !== -1) return false;
+    return query.inc.every(function (g) {
+      return g.some(function (t) {
+        return text.indexOf(t) !== -1;
+      });
+    });
+  }
+
+  function taiyoLink(href, text) {
+    return el("a", { href: href, target: "_blank", rel: "noopener", text: text });
+  }
+
   function drawTaiyo(ul, q, count, d) {
     var query = parseQuery(q);
-    var link = function (href, text) {
-      return el("a", { href: href, target: "_blank", rel: "noopener", text: text });
-    };
+    var searching = query.inc.length || query.exc.length;
+    var b = d.beppyo;
     ul.textContent = "";
     ul.appendChild(
       el("li", { class: "class-intro" }, [
-        el("h2", { class: "class-title", text: "法定耐用年数（" + d.title + "）" }),
+        el("h2", { class: "class-title", text: "法定耐用年数（耐用年数省令の別表）" }),
         el("p", {
           class: "class-desc",
           text:
-            "減価償却資産の耐用年数は「減価償却資産の耐用年数等に関する省令」の別表で定められています。ここでは、国税庁が別表から主なものを抜き出した「" +
-            d.title +
-            "」を、資産の区分ごとに掲載しています。",
+            "減価償却資産の耐用年数・償却率などは「" +
+            b.law_title +
+            "」（" +
+            b.law_num +
+            "）の別表第一～第十一で定められています。下のボタンで表を切り替えます。国税庁が主なものを抜き出した「" +
+            d.main.title +
+            "」もあります。",
         }),
         el("p", { class: "class-desc" }, [
-          link(d.source_url, "国税庁「" + d.title + "」（PDF）"),
+          taiyoLink(b.law_url, "耐用年数省令（e-Gov法令検索）"),
           document.createTextNode("　"),
-          link(d.page_url, "タックスアンサー No.2100 減価償却のあらまし"),
+          taiyoLink(d.main.source_url, "国税庁「" + d.main.title + "」（PDF）"),
           document.createTextNode("　"),
-          link(d.egov_url, "耐用年数省令の別表（e-Gov法令検索）"),
+          taiyoLink(d.main.page_url, "タックスアンサー No.2100 減価償却のあらまし"),
         ]),
         el("p", {
           class: "class-note",
           text:
-            "主な資産だけを掲載した表です（構築物・船舶・航空機・無形減価償却資産・生物などは載っていません）。ここにない資産や、詳しい区分は別表でご確認ください。取得日：" +
-            d.generated_at.slice(0, 10),
+            "別表は e-Gov 法令検索の省令本文（最終改正：" +
+            b.amendment_law_num +
+            "、" +
+            b.amendment_enforcement_date +
+            " 施行）をそのまま表にしたもので、年数・率の漢数字だけ算用数字にしています（取得日：" +
+            b.generated_at.slice(0, 10) +
+            "）。国税庁の表の取得日：" +
+            d.main.generated_at.slice(0, 10) +
+            "。実際の適用は原文でご確認ください。",
         }),
       ])
     );
-    var total = 0;
-    var shown = 0;
-    var nav = el("li", { class: "taiyo-nav" });
-    ul.appendChild(nav);
-    d.sections.forEach(function (s, si) {
-      total += s.rows.length;
-      var rows = s.rows.filter(function (r) {
-        for (var i = 0; i < query.exc.length; i++) if (r.norm.indexOf(query.exc[i]) !== -1) return false;
-        return query.inc.every(function (g) {
-          return g.some(function (t) {
-            return r.norm.indexOf(t) !== -1;
+
+    // 表の切り替え（検索中は表ごとの該当件数を添える）
+    var views = [{ key: "main", label: "主な資産（国税庁の早見表）", hits: 0 }].concat(
+      b.tables.map(function (t) {
+        return { key: t.no, label: t.no + " " + (BEPPYO_SHORT[t.no] || t.name), hits: 0, table: t };
+      })
+    );
+    views.forEach(function (v) {
+      if (v.table) {
+        v.hits = v.table.rows.filter(function (r, i) {
+          return rowMatches(r.norm, query);
+        }).length;
+        v.total = v.table.rows.length;
+      } else {
+        v.total = 0;
+        d.main.sections.forEach(function (s) {
+          v.total += s.rows.length;
+          v.hits += s.rows.filter(function (r) {
+            return rowMatches(r.norm, query);
+          }).length;
+        });
+      }
+    });
+    var picker = el("li", { class: "taiyo-picker" });
+    views.forEach(function (v) {
+      var btn = el("button", {
+        class: "chip" + (v.key === taiyoView ? " is-active" : ""),
+        type: "button",
+        "aria-pressed": String(v.key === taiyoView),
+        text: v.label + (searching ? "（" + v.hits + "）" : ""),
+      });
+      if (searching && !v.hits) btn.classList.add("is-empty");
+      btn.addEventListener("click", function () {
+        taiyoView = v.key;
+        drawTaiyo(ul, q, count, d);
+      });
+      picker.appendChild(btn);
+    });
+    ul.appendChild(picker);
+
+    var cur = views.filter(function (v) {
+      return v.key === taiyoView;
+    })[0] || views[0];
+    if (cur.table) drawBeppyo(ul, cur.table, query, searching);
+    else drawMainTable(ul, d.main, query);
+    count.textContent = searching ? cur.hits + " 件（" + cur.label + " 全 " + cur.total + " 件）" : cur.label + "：全 " + cur.total + " 件";
+    if (searching && !cur.hits) ul.appendChild(el("li", { class: "empty" }, [el("p", { text: "この表には該当する行がありません。ほかの表の（）内の件数をご覧ください。" })]));
+  }
+
+  // 別表：省令本文の表のとおり（行の結合・罫線を含む）に表示する。検索中は該当する行を含むまとまりだけを表示する
+  function drawBeppyo(ul, t, query, searching) {
+    var thead = el("thead");
+    t.head.forEach(function (r) {
+      thead.appendChild(
+        el(
+          "tr",
+          {},
+          r.map(function (c) {
+            var a = { scope: "col", text: c.t };
+            if (c.r > 1) a.rowspan = String(c.r);
+            if (c.c > 1) a.colspan = String(c.c);
+            return el("th", a);
+          })
+        )
+      );
+    });
+    var ncol = 0;
+    t.head[0].forEach(function (c) {
+      ncol += c.c || 1;
+    });
+    var numeric = /償却率|保証率/.test(
+      t.head[0]
+        .map(function (c) {
+          return c.t;
+        })
+        .join("")
+    );
+    var tbody = el("tbody");
+    function fullRow(r, hit) {
+      var tr = el("tr", { class: hit ? "is-hit" : "" });
+      r.forEach(function (c) {
+        var a = { class: "bp-cell" + (c.nb ? " nb-" + c.nb : "") + (c.col === ncol - 1 && !numeric ? " bp-num" : "") };
+        if (c.r > 1) a.rowspan = String(c.r);
+        if (c.c > 1) a.colspan = String(c.c);
+        tr.appendChild(el("td", a, []));
+        tr.lastChild.innerHTML = highlight(c.t, query.terms);
+      });
+      return tr;
+    }
+    t.blocks.forEach(function (bl) {
+      if (!searching) {
+        bl.rows.forEach(function (r) {
+          tbody.appendChild(fullRow(r, false));
+        });
+        return;
+      }
+      if (!rowMatches(bl.norm, query)) return;
+      // 該当する行と、そのすぐ上に続く年数のない行（見出しの行）だけを表示し、間は「…」で省く。
+      // 結合されたセル（構造・用途など）は、表示する最初の行に薄く添える
+      var show = bl.rows.map(function (r) {
+        return rowMatches(r.norm, query);
+      });
+      if (show.indexOf(true) === -1) show[0] = true;
+      for (var i = bl.rows.length - 1; i > 0; i--) {
+        if (show[i]) {
+          for (var j = i - 1; j >= 0 && !bl.rows[j].grid[ncol - 1].t && bl.rows[j].grid[ncol - 1] === bl.rows[j][bl.rows[j].length - 1]; j--) show[j] = true;
+        }
+      }
+      var group = [];
+      var first = true;
+      var skipped = 0;
+      function flushSkip() {
+        if (!skipped) return;
+        var n = skipped;
+        var btn = el("button", { class: "bp-more", type: "button", text: "… " + n + " 行を省略（このまとまりをすべて表示）" });
+        var tr = el("tr", { class: "bp-skip" }, [el("td", { colspan: String(ncol) }, [btn])]);
+        btn.addEventListener("click", function () {
+          group.forEach(function (x) {
+            if (x !== rowsEnd) x.remove();
+          });
+          bl.rows.forEach(function (r) {
+            tbody.insertBefore(fullRow(r, rowMatches(r.norm, query)), rowsEnd);
           });
         });
+        group.push(tr);
+        tbody.appendChild(tr);
+        skipped = 0;
+        first = true;
+      }
+      bl.rows.forEach(function (r, i) {
+        if (!show[i]) {
+          skipped++;
+          return;
+        }
+        flushSkip();
+        var tr = el("tr", { class: rowMatches(r.norm, query) ? "is-hit" : "" });
+        r.grid.forEach(function (c, col) {
+          if (c.col !== col) return; // 横に結合したセルの 2 列目以降
+          var own = r.indexOf(c) !== -1;
+          var a = { class: "bp-cell" + (col === ncol - 1 && !numeric ? " bp-num" : "") };
+          if (c.c > 1) a.colspan = String(c.c);
+          var td = el("td", a);
+          if (own && c.t) td.innerHTML = highlight(c.t, query.terms);
+          else if (first && col < ncol - 2) {
+            // 表示する最初の行では、空の列に、同じまとまりの上の行にある同じ列の文字（結合セルを含む）を薄く添える
+            var ctx = c.t;
+            for (var k = i - 1; !ctx && k >= 0; k--) {
+              var up = bl.rows[k].grid[col];
+              if (up.col === col) ctx = up.t;
+            }
+            if (!ctx && col === 0) ctx = bl.kind;
+            if (ctx) td.appendChild(el("span", { class: "bp-kind", text: ctx }));
+          }
+          tr.appendChild(td);
+        });
+        first = false;
+        group.push(tr);
+        tbody.appendChild(tr);
+      });
+      flushSkip();
+      var rowsEnd = el("tr", { class: "bp-sep" }, [el("td", { colspan: String(ncol) })]);
+      group.push(rowsEnd);
+      tbody.appendChild(rowsEnd);
+    });
+    // 列の幅：年数・率の列は狭く、細目の列を広くとる
+    var cg = el("colgroup");
+    for (var w = 0; w < ncol; w++) {
+      var width = numeric ? "" : w === ncol - 1 ? "5.5em" : ncol === 4 && w < 2 ? (w === 0 ? "13%" : "24%") : ncol === 3 && w === 0 ? "30%" : "";
+      cg.appendChild(el("col", width ? { style: "width:" + width } : {}));
+    }
+    ul.appendChild(
+      el("li", { class: "topic-card taiyo-card" }, [
+        el("h3", { class: "topic-title" }, [el("span", { text: t.no + "　" + t.name })]),
+        el("div", { class: "taiyo-wrap" }, [el("table", { class: "taiyo-table bp-table" + (numeric ? " bp-rates" : "") }, [cg, thead, tbody])]),
+      ])
+    );
+  }
+
+  // 国税庁の「主な減価償却資産の耐用年数表」：区分ごとの表（構造・用途｜細目｜耐用年数）
+  function drawMainTable(ul, main, query) {
+    var nav = el("li", { class: "taiyo-nav" });
+    ul.appendChild(nav);
+    main.sections.forEach(function (s, si) {
+      var rows = s.rows.filter(function (r) {
+        return rowMatches(r.norm, query);
       });
       if (!rows.length) return;
-      shown += rows.length;
       var id = "taiyo-" + si;
       var jump = el("button", { class: "chip", type: "button", text: s.name });
       jump.addEventListener("click", function () {
@@ -807,8 +1072,11 @@
       );
     });
     if (!nav.children.length) nav.remove();
-    if (!shown) ul.appendChild(el("li", { class: "empty" }, [el("p", { text: "該当する資産が見つかりませんでした。" })]));
-    count.textContent = query.inc.length || query.exc.length ? shown + " 件（全 " + total + " 件）" : "全 " + total + " 件";
+    var note = el("li", {
+      class: "class-note taiyo-foot",
+      text: "国税庁が主な資産だけを抜き出した表です（構築物・船舶・航空機・無形減価償却資産・生物などは載っていません）。すべての資産は上の別表第一～第六でご確認ください。",
+    });
+    ul.appendChild(note);
   }
 
   /* ---------- タブ ---------- */
