@@ -79,11 +79,11 @@ def main():
         sys.exit(__doc__)
     out = Path(sys.argv[1])
     (out / "data").mkdir(parents=True, exist_ok=True)
-    for name in ("app.js", "bunrui.js", "data/hojin.json", "data/yomi.json"):
+    for name in ("app.js", "bunrui.js", "data/hojin.json", "data/yomi.json", "data/taiyo.json"):
         shutil.copy(ROOT / name, out / name)
     (out / "style.css").write_text(build_css((ROOT / "style.css").read_text(encoding="utf-8")), encoding="utf-8")
     (out / "index.html").write_text(build_html((ROOT / "index.html").read_text(encoding="utf-8")), encoding="utf-8")
-    print(f"{out}: index.html, style.css, app.js, bunrui.js, data/hojin.json, data/yomi.json")
+    print(f"{out}: index.html, style.css, app.js, bunrui.js, data/hojin.json, data/yomi.json, data/taiyo.json")
 
 
 if __name__ == "__main__":

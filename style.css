@@ -385,3 +385,19 @@ mark { background: #fff3a3; color: inherit; border-radius: 2px; padding: 0 1px; 
 @media (prefers-color-scheme: dark) {
   mark { background: #5c4d12; }
 }
+
+/* 減価償却の「法定耐用年数（別表）」：国税庁の主な減価償却資産の耐用年数表 */
+.chip-extra { border-style: dashed; font-weight: 600; }
+.chip-extra.is-active { border-style: solid; }
+.taiyo-nav { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; }
+.taiyo-card .topic-title { scroll-margin-top: 12px; }
+.taiyo-wrap { overflow-x: auto; }
+.taiyo-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.taiyo-table th, .taiyo-table td { padding: 6px 8px; border: 1px solid var(--border); vertical-align: top; text-align: left; }
+.taiyo-table thead th { background: var(--bg); color: var(--muted); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.taiyo-struct { width: 32%; background: var(--bg); font-weight: 600; overflow-wrap: anywhere; }
+.taiyo-detail { overflow-wrap: anywhere; }
+.taiyo-path { display: block; color: var(--muted); font-size: 0.82rem; }
+.taiyo-item { display: block; }
+.taiyo-years { width: 5em; text-align: right; font-weight: 700; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.taiyo-table thead th:last-child { text-align: right; }
