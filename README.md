@@ -128,6 +128,13 @@ GitHub Actions（`.github/workflows/facebook-daily.yml`）が毎日 13:47（日�
 
 手元での確認：`node scripts/facebook-post.js --dry-run --date=2026-11-19`、`node scripts/facebook-image.js card.svg --date=2026-11-19`（SVG ならブラウザで開ける）。`node scripts/facebook-preview.js 出力先` で翌日の本文（post.txt）とカード画像（card.png）をまとめて作れる（Playwright が必要）。毎日 17:47 ごろ、Claude Code の定期実行で翌日分をこの方法で作って事前確認に回している。
 
+遅れ・未実行への備え：GitHub の定期実行は大きく遅れたり動かなかったりすることがある（実際に 9 時間ほど遅れた日がある）。そのため Claude Code の定期実行で毎日 15:47（予定の 2 時間後）にその日の実行記録を確かめ、まだ動いていなければ「Run workflow」で起動する。二重投稿を防ぐため、投稿の前に次のどちらかに当たれば投稿しない（`--force` を付けると確認しない）。
+
+- このワークフローのその日（日本時間）のほかの実行（dry run を除く。dry run の実行は名前に「(dry run)」が付く）が成功している
+- ページのその日の投稿に、同じ見出し（【今日の法人税】テーマ名）で始まるものがある（ページの投稿を読めないときは、ログに書いて GitHub の実行記録の確認だけで判断する）
+
+あわせて、同時に 2 つの実行が動かないようにしている（後の実行は前の実行が終わるのを待ってから、投稿済みかを確かめる）。
+
 日付ごとの指定：リポジトリ直下の `facebook-overrides.json`（任意）で、その日の投稿を止めたり、テーマや紹介する通達・記事を差し替えたりできる（`main` に入れると反映される）。
 
 ```json

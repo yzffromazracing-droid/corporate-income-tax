@@ -1,4 +1,6 @@
 name: Facebook daily post
+# dry run の実行は名前で見分け、二重投稿の確認から外す
+run-name: ${{ inputs.dry_run && 'Facebook daily post (dry run)' || 'Facebook daily post' }}
 
 on:
   schedule:
@@ -10,6 +12,15 @@ on:
         description: "投稿せずに本文と画像だけ作る（画像は実行結果の Artifacts からダウンロード）"
         type: boolean
         default: false
+
+# 同時に 2 つ動かさない（後の実行は前の実行が終わってから、投稿済みかを確かめて動く）
+concurrency:
+  group: facebook-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   post:
@@ -33,6 +44,8 @@ jobs:
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
           # Variables の SITE_URL があればそちらを使う
           SITE_URL: ${{ vars.SITE_URL || 'https://yzffromazracing-droid.github.io/corporate-income-tax/' }}
+          # 同じ日のほかの実行で投稿済みかを確かめるのに使う
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/facebook-post.js --image="$RUNNER_TEMP/card.png" ${{ inputs.dry_run && '--dry-run' || '' }}
       - name: Upload card image
         if: ${{ inputs.dry_run }}

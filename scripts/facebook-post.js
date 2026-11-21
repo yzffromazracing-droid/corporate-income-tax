@@ -16,6 +16,9 @@
  * 国税庁の原文の抜粋・題名で、新しく文章を作ったり言い換えたりはしない。
  * --image を指定し、そのファイルがあれば写真付きで投稿する（本文は写真の説明文になる）。
  * --dry-run またはトークン未設定のときは投稿せず本文を表示するだけ。
+ * 二重投稿を防ぐため、投稿の前に次のどちらかに当たれば投稿しない（--force で無視できる）：
+ *   ・GitHub Actions 上で、このワークフローのその日（日本時間）のほかの実行（dry run を除く）が成功している
+ *   ・ページのその日の投稿に、同じ見出し（【今日の法人税】テーマ名）で始まるものがある
  * facebook-overrides.json（任意）で日付ごとに投稿を止めたり、テーマ・通達を差し替えたりできる：
  *   { "2026-11-20": "skip",                       … その日は投稿しない
  *     "2026-11-21": "交際費等の範囲",              … テーマを差し替える（テーマ名）
@@ -151,6 +154,43 @@ async function post(pageId, token, message, link, version, imageFile) {
   return json;
 }
 
+// その日（日本時間）の 0 時の UNIX 時刻（秒）
+function jstMidnight(date) {
+  return Math.floor((dayIndex(date) * DAY_MS - JST_OFFSET_MS) / 1000);
+}
+
+// GitHub Actions 上で、このワークフローのその日のほかの実行（dry run を除く）が成功していれば、その実行番号を返す
+async function postedByOtherRun(date) {
+  var token = process.env.GITHUB_TOKEN;
+  var repo = process.env.GITHUB_REPOSITORY;
+  var runId = process.env.GITHUB_RUN_ID;
+  var workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+  if (!token || !repo || !runId) return null;
+  var file = (workflowRef.split("@")[0].split("/").pop()) || "facebook-daily.yml";
+  var since = new Date(jstMidnight(date) * 1000).toISOString();
+  var url = "https://api.github.com/repos/" + repo + "/actions/workflows/" + encodeURIComponent(file) +
+    "/runs?per_page=50&created=" + encodeURIComponent(">=" + since);
+  var res = await fetch(url, { headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" } });
+  if (!res.ok) throw new Error("GitHub API " + res.status);
+  var json = await res.json();
+  var hit = (json.workflow_runs || []).filter(function (r) {
+    return String(r.id) !== String(runId) && r.conclusion === "success" && !/dry run/i.test(r.display_title || "");
+  })[0];
+  return hit ? hit.run_number : null;
+}
+
+// ページのその日の投稿に、同じ見出しで始まるものがあれば true
+async function postedOnPage(pageId, token, topic, date, version) {
+  var head = "【今日の法人税】" + topic.name;
+  var url = "https://graph.facebook.com/" + (version || "v23.0") + "/" + encodeURIComponent(pageId) +
+    "/posts?fields=message&limit=25&since=" + jstMidnight(date) + "&access_token=" + encodeURIComponent(token);
+  var json = await (await fetch(url)).json();
+  if (json.error) throw new Error(json.error.message);
+  return (json.data || []).some(function (p) {
+    return (p.message || "").indexOf(head) === 0;
+  });
+}
+
 // 投稿の前に、トークンの持ち主と FB_PAGE_ID が合っているかをログに出す
 // （ログは公開されることがあるので、持ち主の名前やIDは出さない）。
 // 個人（ユーザー）のトークンが入っていて、そのユーザーが FB_PAGE_ID のページを管理している場合は、
@@ -186,6 +226,7 @@ async function resolveToken(pageId, token, version) {
 async function main() {
   var args = process.argv.slice(2);
   var dryRun = args.indexOf("--dry-run") !== -1;
+  var force = args.indexOf("--force") !== -1;
   var dateArg = args.filter(function (a) { return a.indexOf("--date=") === 0; })[0];
   var imageArg = args.filter(function (a) { return a.indexOf("--image=") === 0; })[0];
   var imageFile = imageArg ? imageArg.slice(8) : "";
@@ -218,6 +259,27 @@ async function main() {
   }
 
   token = await resolveToken(pageId, token, process.env.FB_GRAPH_VERSION);
+
+  // 二重投稿の防止（確認できなかったときはログに書いて投稿を続ける）
+  if (!force) {
+    try {
+      var other = await postedByOtherRun(date);
+      if (other) {
+        console.log(jstDate(date) + " はこのワークフローの実行 #" + other + " で投稿済みのため投稿しません。");
+        return;
+      }
+    } catch (e) {
+      console.error("GitHub の実行記録を確認できませんでした：" + e.message);
+    }
+    try {
+      if (await postedOnPage(pageId, token, topic, date, process.env.FB_GRAPH_VERSION)) {
+        console.log(jstDate(date) + " はページに同じ見出しの投稿があるため投稿しません。");
+        return;
+      }
+    } catch (e) {
+      console.error("ページの投稿を確認できませんでした：" + e.message);
+    }
+  }
   var result = await post(pageId, token, message, siteUrl, process.env.FB_GRAPH_VERSION, imageFile);
   console.log("posted: " + (result.post_id || result.id) + " (" + topic.label + "／" + topic.name + (imageFile ? "・写真付き" : "") + ")");
 }
@@ -229,4 +291,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { dayIndex: dayIndex, jstDate: jstDate, pickTopic: pickTopic, pickFeatured: pickFeatured, pickForDate: pickForDate, buildMessage: buildMessage, post: post };
+module.exports = { main: main, dayIndex: dayIndex, jstDate: jstDate, jstMidnight: jstMidnight, pickTopic: pickTopic, pickFeatured: pickFeatured, pickForDate: pickForDate, buildMessage: buildMessage, post: post };
