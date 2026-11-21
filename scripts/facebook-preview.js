@@ -38,8 +38,7 @@ async function main() {
     console.log(day + "：投稿しない日");
     return;
   }
-  var siteUrl = process.env.SITE_URL || "https://yzffromazracing-droid.github.io/corporate-income-tax/";
-  fs.writeFileSync(txt, post.buildMessage(picked.topic, siteUrl, picked.featured) + "\n");
+  fs.writeFileSync(txt, post.buildMessage(picked.topic, picked.featured) + "\n");
 
   var svg = path.join(outDir, "card.svg");
   fs.writeFileSync(svg, image.buildSvg(picked.topic, picked.featured));

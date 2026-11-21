@@ -7,7 +7,6 @@
  * 環境変数:
  *   FB_PAGE_ID           : 投稿先のFacebookページID
  *   FB_PAGE_ACCESS_TOKEN : ページアクセストークン（pages_manage_posts 権限）
- *   SITE_URL             : 投稿に添えるサイトのURL（任意）
  *   FB_GRAPH_VERSION     : Graph APIのバージョン（任意。既定 v23.0）
  *
  * テーマは日付（日本時間）から決まるので、テーマの数（約185）の日数で全テーマを一巡する。
@@ -89,7 +88,8 @@ function hashtag(s) {
   return "#" + s.replace(/[\s・（）()／/、%％「」]/g, "");
 }
 
-function buildMessage(topic, siteUrl, featured) {
+// 公開ページ（辞書のサイト）のアドレスは載せない
+function buildMessage(topic, featured) {
   var lines = [];
   lines.push("【今日の法人税】" + topic.name);
   lines.push("");
@@ -116,11 +116,6 @@ function buildMessage(topic, siteUrl, featured) {
       lines.push("・" + topics.itemLabel(r));
     });
   }
-  if (siteUrl) {
-    lines.push("");
-    lines.push("ほかのテーマや通達・記事の全文は「法人税区分辞書」で調べられます。");
-    lines.push(siteUrl);
-  }
   lines.push("");
   lines.push("※ テーマの説明は辞書による概要、抜粋は国税庁ホームページの原文です（取得時点のもの）。実際の適用は必ず原文でご確認ください。");
   lines.push("");
@@ -129,12 +124,12 @@ function buildMessage(topic, siteUrl, featured) {
   return lines.join("\n");
 }
 
-async function post(pageId, token, message, link, version, imageFile) {
+async function post(pageId, token, message, version, imageFile) {
   var base = "https://graph.facebook.com/" + (version || "v23.0") + "/" + encodeURIComponent(pageId);
   var url;
   var body;
   if (imageFile) {
-    // 写真投稿。リンクは本文中のURLで代える
+    // 写真投稿
     url = base + "/photos";
     body = new FormData();
     body.set("caption", message);
@@ -143,7 +138,6 @@ async function post(pageId, token, message, link, version, imageFile) {
   } else {
     url = base + "/feed";
     body = new URLSearchParams({ message: message, access_token: token });
-    if (link) body.set("link", link);
   }
   var res = await fetch(url, { method: "POST", body: body });
   var json = await res.json().catch(function () { return {}; });
@@ -241,14 +235,13 @@ async function main() {
     process.exit(2);
   }
 
-  var siteUrl = process.env.SITE_URL || "";
   var picked = pickForDate(date);
   if (!picked) {
     console.log(jstDate(date) + " は facebook-overrides.json で投稿しない日に指定されています。");
     return;
   }
   var topic = picked.topic;
-  var message = buildMessage(topic, siteUrl, picked.featured);
+  var message = buildMessage(topic, picked.featured);
 
   var pageId = process.env.FB_PAGE_ID;
   var token = process.env.FB_PAGE_ACCESS_TOKEN;
@@ -280,7 +273,7 @@ async function main() {
       console.error("ページの投稿を確認できませんでした：" + e.message);
     }
   }
-  var result = await post(pageId, token, message, siteUrl, process.env.FB_GRAPH_VERSION, imageFile);
+  var result = await post(pageId, token, message, process.env.FB_GRAPH_VERSION, imageFile);
   console.log("posted: " + (result.post_id || result.id) + " (" + topic.label + "／" + topic.name + (imageFile ? "・写真付き" : "") + ")");
 }
 
