@@ -42,8 +42,6 @@ jobs:
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
-          # Variables の SITE_URL があればそちらを使う
-          SITE_URL: ${{ vars.SITE_URL || 'https://yzffromazracing-droid.github.io/corporate-income-tax/' }}
           # 同じ日のほかの実行で投稿済みかを確かめるのに使う
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/facebook-post.js --image="$RUNNER_TEMP/card.png" ${{ inputs.dry_run && '--dry-run' || '' }}
