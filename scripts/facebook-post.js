@@ -46,6 +46,14 @@ function pickTopic(date, list) {
   return list[(n + list.length) % list.length];
 }
 
+// 日本時間の時（0～23）
+function jstHour(date) {
+  return new Date(date.getTime() + JST_OFFSET_MS).getUTCHours();
+}
+
+// 定期実行がこの時刻（日本時間）より前に動いたときは、前日分が遅れて動いたものとみなす
+var LATE_SCHEDULE_HOUR = 13;
+
 // 日本時間の日付（YYYY-MM-DD）
 function jstDate(date) {
   return new Date(dayIndex(date) * DAY_MS).toISOString().slice(0, 10);
@@ -233,6 +241,13 @@ async function main() {
   if (isNaN(date.getTime())) {
     console.error("invalid --date");
     process.exit(2);
+  }
+
+  // GitHub の定期実行（13:47 の予定）が大きく遅れて、日付が変わってから動いたときは前日分の遅れとみなし、
+  // 投稿しない（前日分は 15:47 の予備起動で投稿済み。そのまま動くと翌日のテーマが深夜に出てしまう）
+  if (!dateArg && process.env.GITHUB_EVENT_NAME === "schedule" && jstHour(date) < LATE_SCHEDULE_HOUR) {
+    console.log("定期実行が日付をまたいで遅れて動いたため（日本時間 " + jstDate(date) + " " + jstHour(date) + " 時台）、前日分の遅れとみなして投稿しません。");
+    return;
   }
 
   var picked = pickForDate(date);
