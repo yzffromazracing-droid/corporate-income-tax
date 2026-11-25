@@ -176,7 +176,9 @@ async function postedByOtherRun(date) {
   if (!res.ok) throw new Error("GitHub API " + res.status);
   var json = await res.json();
   var hit = (json.workflow_runs || []).filter(function (r) {
-    return String(r.id) !== String(runId) && r.conclusion === "success" && !/dry run/i.test(r.display_title || "");
+    // 日付をまたいで遅れた定期実行（13 時より前に動いたもの）は投稿せずに終わっているので数えない
+    var lateSchedule = r.event === "schedule" && jstHour(new Date(r.created_at)) < LATE_SCHEDULE_HOUR;
+    return String(r.id) !== String(runId) && r.conclusion === "success" && !lateSchedule && !/dry run/i.test(r.display_title || "");
   })[0];
   return hit ? hit.run_number : null;
 }
