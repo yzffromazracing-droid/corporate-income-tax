@@ -111,16 +111,19 @@ function buildMessage(topic, featured) {
     lines.push("（" + topics.SOURCE_LABEL[featured.source] + "は、" + topics.SOURCE_ABOUT[featured.source] + "です）");
     lines.push("");
     lines.push("〔原文の抜粋〕");
-    // アドレスは載せない（出典が国税庁ホームページであることは末尾の注記に書く）
     lines.push(topics.excerpt(featured, EXCERPT_CHARS));
+    lines.push("");
+    lines.push("🔗 国税庁ホームページの原文はこちら");
+    lines.push(featured.url);
   }
   var others = topic.items.filter(function (r) { return r !== featured; });
   if (others.length) {
     lines.push("");
     lines.push("■ " + (featured ? "ほかの" : "") + "関連する通達・記事" + (others.length > OTHER_ITEMS ? "（全" + topic.items.length + "件から）" : ""));
-    // 題名だけを載せる（国税庁のアドレスは今日の通達・記事の分だけ）
+    // 題名の下に国税庁の原文のアドレスを付ける
     others.slice(0, OTHER_ITEMS).forEach(function (r) {
       lines.push("・" + topics.itemLabel(r));
+      if (r.url) lines.push(r.url);
     });
   }
   lines.push("");
