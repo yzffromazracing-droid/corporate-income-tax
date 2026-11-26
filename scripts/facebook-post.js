@@ -111,10 +111,8 @@ function buildMessage(topic, featured) {
     lines.push("（" + topics.SOURCE_LABEL[featured.source] + "は、" + topics.SOURCE_ABOUT[featured.source] + "です）");
     lines.push("");
     lines.push("〔原文の抜粋〕");
+    // アドレスは載せない（出典が国税庁ホームページであることは末尾の注記に書く）
     lines.push(topics.excerpt(featured, EXCERPT_CHARS));
-    lines.push("");
-    lines.push("🔗 国税庁ホームページの原文はこちら");
-    lines.push(featured.url);
   }
   var others = topic.items.filter(function (r) { return r !== featured; });
   if (others.length) {
