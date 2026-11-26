@@ -120,8 +120,10 @@ function buildMessage(topic, featured) {
   if (others.length) {
     lines.push("");
     lines.push("■ " + (featured ? "ほかの" : "") + "関連する通達・記事" + (others.length > OTHER_ITEMS ? "（全" + topic.items.length + "件から）" : ""));
+    // 題名の下に国税庁の原文のリンクを付ける
     others.slice(0, OTHER_ITEMS).forEach(function (r) {
       lines.push("・" + topics.itemLabel(r));
+      if (r.url) lines.push(r.url);
     });
   }
   lines.push("");
